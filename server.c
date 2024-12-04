@@ -122,6 +122,12 @@ const char *SERVER_UART_PATH[] = {
 #define UID_eMMC_L      133
 #define UID_eMMC_R      137
 
+#define UID_LED100M_L   152
+#define UID_LED100M_R   156
+
+#define UID_LED1G_L     153
+#define UID_LED1G_R     157
+
 #define RUN_BOX_ON      RGB_TO_UINT(204, 204, 0)
 #define RUN_BOX_OFF     RGB_TO_UINT(153, 153, 0)
 
@@ -577,8 +583,25 @@ void ts_event_check (server_t *p, int ui_id)
             pch = (ui_id == UID_IERF3_L) ? &p->ch[0] : &p->ch[1];
             SERIAL_RESP_FORM(serial_resp, 'R', 5, 2, NULL);
             break;
-        default :
+        case UID_LED100M_L: case UID_LED100M_R:
+            pch = (ui_id == UID_LED100M_L) ? &p->ch[0] : &p->ch[1];
+            SERIAL_RESP_FORM(serial_resp, 'R', 8, 12, NULL);
             break;
+        case UID_LED1G_L  : case UID_LED1G_R  :
+            pch = (ui_id == UID_LED1G_L) ? &p->ch[0] : &p->ch[1];
+            SERIAL_RESP_FORM(serial_resp, 'R', 8, 13, NULL);
+            break;
+        case UID_CHANNEL_L: case UID_CHANNEL_R:
+            pch = (ui_id == UID_CHANNEL_L) ? &p->ch[0] : &p->ch[1];
+            if (pch->status == eSTATUS_PRINT) {
+                // Print Err msg L/R
+                printf ("%s : error msg printing... (ch = %d)\n",
+                    __func__, (ui_id == UID_CHANNEL_L) ? 0 : 1);
+            }
+            SERIAL_RESP_FORM(serial_resp, 'X', -1, -1, NULL);
+            break;
+        default :
+            return;
     }
     protocol_msg_tx (pch->puart, serial_resp);
     protocol_msg_tx (pch->puart, "\r\n");
