@@ -134,11 +134,29 @@ int device_resp_check (int fd, parse_resp_data_t *pdata)
         case eGID_LED:
             {
                 int value = 0, pin, i, adc_read;
-                for (i = 0; i < 5; i++) {
+                for (i = 0; i < 400; i++) {
                     adc_board_read (fd, pdata->resp_s, &adc_read, &pin);
                     if (value < adc_read)
                         value = adc_read;
-                    usleep (10*1000);
+
+                    switch (DEVICE_ID(pdata->did)) {
+                        // power, alive
+                        case 0: case 1:
+                            if (DEVICE_ACTION(pdata->did)) {
+                                if (value > 600) i = 400;
+                            } else {
+                                if (value < 400) i = 400;
+                            }
+                            break;
+                        default :
+                            if (DEVICE_ACTION(pdata->did)) {
+                                if (value > 300) i = 400;
+                            } else {
+                                if (value < 100) i = 400;
+                            }
+                            break;
+                    }
+                    usleep (1000);
                 }
                 printf ("%s : led value = %d\n", __func__, value);
                 memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
@@ -153,7 +171,7 @@ int device_resp_check (int fd, parse_resp_data_t *pdata)
 #define GPIO_HIGH_mV    3000
             {
                 int header[HEADER_PIN_MAX +1];
-                int value = 0, pin, i;
+                int pin, i;
                 memset (header, 0, sizeof(header));
                 //int adc_board_read (int fd, const char *h_name, int *read_value, int *cnt)
                 adc_board_read (fd, pdata->resp_s, &header[0], &pin);

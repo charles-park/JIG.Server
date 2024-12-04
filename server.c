@@ -98,6 +98,24 @@ const char *SERVER_UART_PATH[] = {
 #define UID_STATUS_L    182
 #define UID_STATUS_R    186
 
+#define UID_MAC_L       62
+#define UID_MAC_R       66
+
+#define UID_USB_LD_L    112
+#define UID_USB_LU_L    113
+#define UID_USB_RD_L    114
+#define UID_USB_RU_L    115
+#define UID_USB_LD_R    116
+#define UID_USB_LU_R    117
+#define UID_USB_RD_R    118
+#define UID_USB_RU_R    119
+
+#define UID_USB_OTG_L   132
+#define UID_USB_OTG_R   136
+
+#define UID_eMMC_L      133
+#define UID_eMMC_R      137
+
 #define RUN_BOX_ON      RGB_TO_UINT(204, 204, 0)
 #define RUN_BOX_OFF     RGB_TO_UINT(153, 153, 0)
 
@@ -129,6 +147,7 @@ typedef struct server__t {
     // HDMI UI
     fb_info_t   *pfb;
     ui_grp_t    *pui;
+    ts_t        *pts;
     channel_t   ch[2];  // channel left/right
 }   server_t;
 
@@ -335,6 +354,22 @@ static void channel_ui_update (server_t *p)
                 break;
             case eSTATUS_PRINT:
                 ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "FINISH");
+#if 0
+{
+    char serial_resp [SERIAL_RESP_SIZE];
+    SERIAL_RESP_FORM(serial_resp, 'R', 2, 0, NULL);
+    protocol_msg_tx (pch->puart, serial_resp);    protocol_msg_tx (pch->puart, "\r\n");
+    SERIAL_RESP_FORM(serial_resp, 'R', 2, 1, NULL);
+    protocol_msg_tx (pch->puart, serial_resp);    protocol_msg_tx (pch->puart, "\r\n");
+    SERIAL_RESP_FORM(serial_resp, 'R', 2, 2, NULL);
+    protocol_msg_tx (pch->puart, serial_resp);    protocol_msg_tx (pch->puart, "\r\n");
+    SERIAL_RESP_FORM(serial_resp, 'R', 2, 3, NULL);
+    protocol_msg_tx (pch->puart, serial_resp);    protocol_msg_tx (pch->puart, "\r\n");
+    SERIAL_RESP_FORM(serial_resp, 'R', 2, 4, NULL);
+    protocol_msg_tx (pch->puart, serial_resp);    protocol_msg_tx (pch->puart, "\r\n");
+// /sys/devices/platform/ff500000.dwc3/xhci-hcd.0.auto/usb1/1-1/1-1.1/1-1.1.2/1-1.1.2:1.0/input/input2/id
+}
+#endif
                 break;
             case eSTATUS_ERR:
                 break;
@@ -422,6 +457,8 @@ static int server_setup (server_t *p)
 {
     if ((p->pfb = fb_init (SERVER_FB)) == NULL)         exit(1);
     if ((p->pui = ui_init (p->pfb, SERVER_UI)) == NULL) exit(1);
+
+p->pts = ts_init ("/dev/input/event2");
     // left, right channel init
     channel_setup (&p->ch[0], 0);    channel_setup (&p->ch[1], 1);
 
@@ -457,6 +494,8 @@ static void protocol_parse (server_t *p, int nch)
         case 'R':
             /* Server System Ready send */
             SERIAL_RESP_FORM(serial_resp, 'O', -1, -1, NULL);
+            ui_update_group (p->pfb, p->pui, nch +1);
+            pch->status = eSTATUS_RUN;
             break;
         /* Device status received */
         case 'S':
@@ -501,6 +540,70 @@ static void protocol_parse (server_t *p, int nch)
 }
 
 //------------------------------------------------------------------------------
+#if 0
+    // ts input test
+    {
+        ts_t *p_ts;
+        ts_event_t event;
+
+        p_ts = ts_init (OPT_TS_DEVICE_NAME);
+        while (p_ts != NULL) {
+            usleep (10000);
+            if (ts_get_event (pfb, p_ts, &event)) {
+                printf ("status = %d, x = %d, y = %d, ui_id = %d\n",
+                        event.status, event.x, event.y, ui_get_titem (pfb, ui_grp, &event));
+
+            }
+        }
+    }
+#endif
+//------------------------------------------------------------------------------
+void ts_event_check (server_t *p, int ui_id)
+{
+    char serial_resp [SERIAL_RESP_SIZE];
+    channel_t *pch;
+
+    memset (serial_resp, 0, sizeof(serial_resp));
+    switch(ui_id) {
+        case UID_STATUS_L : case UID_STATUS_R :
+            pch = (ui_id == UID_STATUS_L) ? &p->ch[0] : &p->ch[1];
+            SERIAL_RESP_FORM(serial_resp, 'E', -1, -1, NULL);
+            break;
+        case UID_MAC_L    : case UID_MAC_R    :
+            pch = (ui_id == UID_STATUS_L) ? &p->ch[0] : &p->ch[1];
+            SERIAL_RESP_FORM(serial_resp, 'M', -1, -1, NULL);
+            break;
+        case UID_USB_LD_L : case UID_USB_LD_R :
+            pch = (ui_id == UID_USB_LD_L) ? &p->ch[0] : &p->ch[1];
+            SERIAL_RESP_FORM(serial_resp, 'R', 2, 1, NULL);
+            break;
+        case UID_USB_LU_L : case UID_USB_LU_R :
+            pch = (ui_id == UID_USB_LU_L) ? &p->ch[0] : &p->ch[1];
+            SERIAL_RESP_FORM(serial_resp, 'R', 2, 2, NULL);
+            break;
+        case UID_USB_RD_L : case UID_USB_RD_R :
+            pch = (ui_id == UID_USB_RD_L) ? &p->ch[0] : &p->ch[1];
+            SERIAL_RESP_FORM(serial_resp, 'R', 2, 3, NULL);
+            break;
+        case UID_USB_RU_L : case UID_USB_RU_R :
+            pch = (ui_id == UID_USB_RU_L) ? &p->ch[0] : &p->ch[1];
+            SERIAL_RESP_FORM(serial_resp, 'R', 2, 4, NULL);
+            break;
+        case UID_USB_OTG_L: case UID_USB_OTG_R:
+            pch = (ui_id == UID_USB_OTG_L) ? &p->ch[0] : &p->ch[1];
+            SERIAL_RESP_FORM(serial_resp, 'R', 2, 0, NULL);
+            break;
+        case UID_eMMC_L   : case UID_eMMC_R   :
+            pch = (ui_id == UID_eMMC_L) ? &p->ch[0] : &p->ch[1];
+            SERIAL_RESP_FORM(serial_resp, 'R', 1, 0, NULL);
+            break;
+        default :
+            break;
+    }
+    protocol_msg_tx (pch->puart, serial_resp);
+    protocol_msg_tx (pch->puart, "\r\n");
+}
+
 //------------------------------------------------------------------------------
 int main (void)
 {
@@ -531,6 +634,16 @@ int main (void)
         for (nch = 0; nch < 2; nch ++) {
             if (protocol_msg_rx (server.ch[nch].puart, server.ch[nch].rx_msg))
                 protocol_parse  (&server, nch);
+        }
+
+        if (server.pts != NULL) {
+            ts_event_t event;
+            if (ts_get_event (server.pfb, server.pts, &event)) {
+                int ui_id = ui_get_titem (server.pfb, server.pui, &event);
+                if ((ui_id != -1) && (event.status == eTS_STATUS_RELEASE)) {
+                    ts_event_check (&server, ui_id);
+                }
+            }
         }
         usleep (MAIN_LOOP_DELAY);
     }
