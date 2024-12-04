@@ -4,3 +4,6 @@
 [submodule "lib_fbui"]
 	path = lib_fbui
 	url = https://github.com/charles-park/lib_fbui
+[submodule "lib_i2cadc"]
+	path = lib_i2cadc
+	url = https://github.com/charles-park/lib_i2cadc

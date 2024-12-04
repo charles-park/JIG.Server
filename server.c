@@ -43,6 +43,8 @@
 //------------------------------------------------------------------------------
 #include "lib_fbui/lib_fb.h"
 #include "lib_fbui/lib_ui.h"
+#include "lib_i2cadc/lib_i2cadc.h"
+
 #include "device_c4.h"
 #include "protocol.h"
 
@@ -65,10 +67,33 @@
 #define NLP_ERR_LINE    20
 
 //------------------------------------------------------------------------------
+const char *SERVER_I2C_PATH[] = {
+    // CH-L
+    { "/dev/i2c-0" },
+    // CH-R
+    { "/dev/i2c-1" },
+};
+
+// ODROID-C4 USB PATH
+#define USB_R_DN    "/sys/devices/platform/ff500000.dwc3/xhci-hcd.0.auto/usb1/1-1/1-1.1/"
+#define USB_R_UP    "/sys/devices/platform/ff500000.dwc3/xhci-hcd.0.auto/usb1/1-1/1-1.4/"
+#define USB_L_DN    "/sys/devices/platform/ff500000.dwc3/xhci-hcd.0.auto/usb1/1-1/1-1.3/"
+#define USB_L_UP    "/sys/devices/platform/ff500000.dwc3/xhci-hcd.0.auto/usb1/1-1/1-1.2/"
+
+const char *SERVER_UART_PATH[] = {
+    // CH-L
+    { USB_L_UP },
+    // CH-R
+    { USB_R_UP },
+};
+
+//------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 #define UID_ALIVE       0
 #define UID_IPADDR      4
-#define UID_STATUS      47
+
+#define UID_STATUS_L    182
+#define UID_STATUS_R    186
 
 #define RUN_BOX_ON      RGB_TO_UINT(204, 204, 0)
 #define RUN_BOX_OFF     RGB_TO_UINT(153, 153, 0)
@@ -82,17 +107,26 @@
 #define UPDATE_UI_DELAY     (500*1000)
 
 // system state
-enum { eSTATUS_WAIT, eSTATUS_RUN, eSTATUS_PRINT, eSTATUS_STOP, eSTATUS_END };
+enum { eSTATUS_WAIT, eSTATUS_RUN, eSTATUS_PRINT, eSTATUS_STOP, eSTATUS_ERR, eSTATUS_END };
+
+typedef struct channel__t {
+    int         status;
+
+    int         i2c_fd;
+    uart_t      *puart;
+    char        uart_path[STR_PATH_LENGTH];
+    char        rx_msg [SERIAL_RESP_SIZE +1];
+    char        tx_msg [SERIAL_RESP_SIZE +1];
+
+    // mac, errmsg
+    char        nlp_msg [NLP_ERR_LINE][NLP_MAX_CHAR];
+}   channel_t;
 
 typedef struct server__t {
     // HDMI UI
     fb_info_t   *pfb;
     ui_grp_t    *pui;
-
-    // UART communication
-    uart_t      *puart;
-    char        rx_msg [SERIAL_RESP_SIZE +1];
-    char        tx_msg [SERIAL_RESP_SIZE +1];
+    channel_t   ch[2];  // channel left/right
 }   server_t;
 
 
@@ -205,7 +239,7 @@ static void toupperstr (char *p)
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
-int print_test_result (server_t *p)
+static int print_test_result (server_t *p)
 {
     return 0;
 }
@@ -241,34 +275,6 @@ retry:
 }
 
 //------------------------------------------------------------------------------
-static int iperf3_client_func (const char *server_ip)
-{
-    FILE *fp;
-    char cmd_line [STR_PATH_LENGTH], *pstr = NULL;
-    int speed;
-
-    memset  (cmd_line, 0, sizeof(cmd_line));
-    sprintf (cmd_line, "iperf3 -c %s -t 1", server_ip);
-
-    if ((fp = popen(cmd_line, "r")) != NULL) {
-        memset (cmd_line, 0, sizeof(cmd_line));
-        while (fgets(cmd_line, sizeof(cmd_line), fp)) {
-            if (strstr (cmd_line, "receiver") != NULL) {
-                if ((pstr = strstr (cmd_line, "MBytes")) != NULL) {
-                    while (*pstr != ' ')    pstr++;
-                    speed = atoi (pstr);
-                    pclose (fp);
-                    return speed;
-                }
-            }
-            memset (cmd_line, 0, sizeof(cmd_line));
-        }
-        pclose(fp);
-    }
-    return 0;
-}
-
-//------------------------------------------------------------------------------
 static void *thread_ui_func (void *pserver)
 {
     static int onoff = 0;
@@ -293,21 +299,63 @@ static void *thread_ui_func (void *pserver)
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
-static int server_setup (server_t *p)
+static int find_uart_port (const char *path)
 {
-    if ((p->pfb = fb_init (SERVER_FB)) == NULL)         exit(1);
-    if ((p->pui = ui_init (p->pfb, SERVER_UI)) == NULL) exit(1);
-    // ODROID-C4 (115200 baud)
-    if ((p->puart = uart_init (SERVER_UART, UART_BAUDRATE)) != NULL) {
-        if (ptc_grp_init (p->puart, 1)) {
-            if (!ptc_func_init (p->puart, 0, SERIAL_RESP_SIZE, protocol_check, protocol_catch)) {
+    FILE *fp;
+    char rdata[256], *ptr;
+
+    memset  (rdata, 0x00, sizeof(rdata));
+    sprintf (rdata, "find %s -name ttyUSB* 2<&1", path);
+
+    // UART (ttyUSB) find...
+    if ((fp = popen(rdata, "r")) != NULL) {
+        memset (rdata, 0x00, sizeof(rdata));
+        while (fgets (rdata, sizeof(rdata), fp) != NULL) {
+
+            if ((ptr = strstr (rdata, "ttyUSB")) != NULL) {
+                char c_port = *(ptr +6);
+                pclose(fp);
+                return (c_port - '0');
+            }
+            memset (rdata, 0x00, sizeof(rdata));
+        }
+        pclose(fp);
+    }
+    return -1;
+}
+
+//------------------------------------------------------------------------------
+static int channel_setup (channel_t *pch, int nch)
+{
+    // i2c init
+    pch->i2c_fd = adc_board_init (SERVER_I2C_PATH[nch]);
+
+    // find uart & protocol init
+    sprintf (pch->uart_path, "/dev/ttyUSB%d", find_uart_port(SERVER_UART_PATH[nch]));
+
+    if ((pch->puart = uart_init (pch->uart_path, UART_BAUDRATE)) != NULL) {
+        if (ptc_grp_init (pch->puart, 1)) {
+            if (!ptc_func_init (pch->puart, 0, SERIAL_RESP_SIZE, protocol_check, protocol_catch)) {
                 printf ("%s : protocol install error.", __func__);
                 exit(1);
             }
         }
         return 1;
     }
+    pch->status = eSTATUS_ERR;
+    printf ("%s : Error... Protocol not installed!\n", __func__);
     return 0;
+}
+
+//------------------------------------------------------------------------------
+static int server_setup (server_t *p)
+{
+    if ((p->pfb = fb_init (SERVER_FB)) == NULL)         exit(1);
+    if ((p->pui = ui_init (p->pfb, SERVER_UI)) == NULL) exit(1);
+    // left, right channel init
+    channel_setup (&p->ch[0], 0);    channel_setup (&p->ch[1], 1);
+
+    return 1;
 }
 
 //------------------------------------------------------------------------------
@@ -324,10 +372,12 @@ static int find_uitem_pos (int gid, int did)
 }
 
 //------------------------------------------------------------------------------
-static void protocol_parse (server_t *p)
+static void protocol_parse (server_t *p, int nch)
 {
     parse_resp_data_t pitem;
-    char *rx_msg = (char *)p->rx_msg;
+    channel_t *pch = &p->ch[nch];
+
+    char *rx_msg = (char *)pch->rx_msg;
     char serial_resp[SERIAL_RESP_SIZE], resp [DEVICE_RESP_SIZE];
 
     if (!device_resp_parse (rx_msg, &pitem))   return;
@@ -337,13 +387,13 @@ static void protocol_parse (server_t *p)
         case 'R':
             /* Server System Ready send */
             SERIAL_RESP_FORM(serial_resp, 'O', -1, -1, NULL);
+            ui_update_group (p->pfb, p->pui, 2);
             break;
         /* Device status received */
         case 'S':
             {
                 int pos = find_uitem_pos (pitem.gid, pitem.did);
-                // int uid = channel ? uitem[pos].uid_r : uitem[pos].uid_l;
-                int uid = uitem[pos].uid_r;
+                int uid = nch ? uitem[pos].uid_r : uitem[pos].uid_l;
 
                 if (uitem[pos].is_str)
                     ui_set_sitem (p->pfb, p->pui, uid, -1, -1, pitem.resp_s);
@@ -354,14 +404,7 @@ static void protocol_parse (server_t *p)
                 } else {
                     ui_set_ritem (p->pfb, p->pui, uid, COLOR_YELLOW, -1);
 
-                    /* Device request I2C ADC Check */
-                    if ((pitem.gid == eGID_ETHERNET) && (pitem.did == 2)) {
-                        int iperf_speed = 0;
-                        iperf_speed = iperf3_client_func (pitem.resp_s);
-                        printf ("%s : iperf = %d\n", __func__, iperf_speed);
-                        memset (pitem.resp_s, 0, sizeof(pitem.resp_s));
-                        sprintf(pitem.resp_s, "%d", iperf_speed);
-                    }
+                    device_resp_check (pch->i2c_fd, &pitem);
                 }
             }
             DEVICE_RESP_FORM_STR(resp, pitem.status_c, pitem.resp_s);
@@ -376,13 +419,14 @@ static void protocol_parse (server_t *p)
             printf ("%s : unknown command!! (%c)\n", __func__, pitem.cmd);
             return;
     }
-    protocol_msg_tx (p->puart, serial_resp);    protocol_msg_tx (p->puart, "\r\n");
+    protocol_msg_tx (pch->puart, serial_resp);    protocol_msg_tx (pch->puart, "\r\n");
 }
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 int main (void)
 {
+    int nch;
     server_t server;
 
     memset (&server, 0, sizeof(server));
@@ -398,12 +442,18 @@ int main (void)
 
         SystemCheckReady = 0;
         SERIAL_RESP_FORM(serial_resp, 'B', -1, -1, NULL);
-        protocol_msg_tx (server.puart, serial_resp);    protocol_msg_tx (server.puart, "\r\n");
+
+        protocol_msg_tx (server.ch[0].puart, serial_resp);
+        protocol_msg_tx (server.ch[0].puart, "\r\n");
+        protocol_msg_tx (server.ch[1].puart, serial_resp);
+        protocol_msg_tx (server.ch[1].puart, "\r\n");
     }
 
     while (1) {
-        if (protocol_msg_rx (server.puart, server.rx_msg))
-            protocol_parse  (&server);
+        for (nch = 0; nch < 2; nch ++) {
+            if (protocol_msg_rx (server.ch[nch].puart, server.ch[nch].rx_msg))
+                protocol_parse  (&server, nch);
+        }
         usleep (MAIN_LOOP_DELAY);
     }
     return 0;

@@ -102,6 +102,7 @@ typedef struct parse_resp_data__t {
 
 //------------------------------------------------------------------------------
 extern int  device_resp_parse   (const char *resp, parse_resp_data_t *pdata);
+extern int  device_resp_check   (int fd, parse_resp_data_t *pdata);
 
 //------------------------------------------------------------------------------
 #endif  // __DEVICE_C4_H__
