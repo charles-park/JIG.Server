@@ -92,6 +92,9 @@ const char *SERVER_UART_PATH[] = {
 #define UID_ALIVE       0
 #define UID_IPADDR      4
 
+#define UID_CHANNEL_L   22
+#define UID_CHANNEL_R   26
+
 #define UID_STATUS_L    182
 #define UID_STATUS_R    186
 
@@ -107,7 +110,7 @@ const char *SERVER_UART_PATH[] = {
 #define UPDATE_UI_DELAY     (500*1000)
 
 // system state
-enum { eSTATUS_WAIT, eSTATUS_RUN, eSTATUS_PRINT, eSTATUS_STOP, eSTATUS_ERR, eSTATUS_END };
+enum { eSTATUS_STOP, eSTATUS_WAIT, eSTATUS_RUN, eSTATUS_PRINT,  eSTATUS_ERR, eSTATUS_END };
 
 typedef struct channel__t {
     int         status;
@@ -136,6 +139,7 @@ typedef struct server__t {
 volatile int SystemCheckReady = 0, RunningTime = DEFAULT_RUNING_TIME;
 volatile int UIStatus = eSTATUS_WAIT;
 
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_t thread_ui;
 pthread_t thread_check;
 
@@ -179,13 +183,13 @@ const struct ui_item uitem[] = {
     // USB OTG Read (2.0)
     {  2, 0,132,136, 1 },
     // USB 3.0 Read (3.0) L/D
-    {  2, 1,113,117, 1 },
+    {  2, 1,112,116, 1 },
     // USB 3.0 Read (3.0) L/U
-    {  2, 2,112,116, 1 },
+    {  2, 2,113,117, 1 },
     // USB 3.0 Read (3.0) R/D
-    {  2, 3,115,119, 1 },
+    {  2, 3,114,118, 1 },
     // USB 3.0 Read (3.0) R/U
-    {  2, 4,114,118, 1 },
+    {  2, 4,115,119, 1 },
 
     // HEADER_40, PT0
     {  6, 0,162,166, 0 },
@@ -275,6 +279,71 @@ retry:
 }
 
 //------------------------------------------------------------------------------
+#define CHECK_POWER_3V      3000
+#define CHECK_POWER_5V      4900
+static int channel_power_status (channel_t *pch)
+{
+    int pin, check_3v, check_5v;
+
+    pthread_mutex_lock   (&mutex);
+    adc_board_read (pch->i2c_fd, "con1.1", &check_3v, &pin);
+    adc_board_read (pch->i2c_fd, "con1.2", &check_5v, &pin);
+    pthread_mutex_unlock (&mutex);
+
+    if ((check_3v > CHECK_POWER_3V) && (check_5v > CHECK_POWER_5V))
+        return 1;
+    // channel power off
+    return 0;
+}
+//------------------------------------------------------------------------------
+static void channel_ui_update (server_t *p)
+{
+    channel_t *pch;
+    int nch, uid;
+    static int onoff = 0;
+
+    onoff = !onoff;
+    for (nch = 0; nch < 2; nch ++) {
+        pch = &p->ch[nch];
+        uid = nch ? UID_STATUS_R : UID_STATUS_L;
+        if (channel_power_status (pch)) {
+            // channel power ui
+            ui_set_ritem (p->pfb, p->pui, nch ? UID_CHANNEL_R : UID_CHANNEL_L,
+                        COLOR_GREEN, -1);
+            if (pch->status == eSTATUS_STOP)
+                pch->status = eSTATUS_WAIT;
+        }
+        else {
+            // channel power ui
+            ui_set_ritem (p->pfb, p->pui, nch ? UID_CHANNEL_R : UID_CHANNEL_L,
+                        COLOR_DIM_GRAY, -1);
+            pch->status = eSTATUS_STOP;
+        }
+
+        switch (pch->status) {
+            case eSTATUS_STOP:
+                break;
+            case eSTATUS_WAIT:
+                pch->status = eSTATUS_RUN;
+                ui_update_group (p->pfb, p->pui, nch +1);
+                ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "WAIT");
+                break;
+            case eSTATUS_RUN:
+                ui_set_ritem (p->pfb, p->pui, uid,
+                            onoff ? RUN_BOX_ON : RUN_BOX_OFF, -1);
+                ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "RUNNING");
+                break;
+            case eSTATUS_PRINT:
+                ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "FINISH");
+                break;
+            case eSTATUS_ERR:
+                break;
+        }
+    }
+    return 0;
+}
+
+//------------------------------------------------------------------------------
 static void *thread_ui_func (void *pserver)
 {
     static int onoff = 0;
@@ -292,6 +361,7 @@ static void *thread_ui_func (void *pserver)
 
         if (onoff)  ui_update (p->pfb, p->pui, -1);
 
+        channel_ui_update (p);
         usleep (UPDATE_UI_DELAY);
     }
     return pserver;
@@ -387,7 +457,6 @@ static void protocol_parse (server_t *p, int nch)
         case 'R':
             /* Server System Ready send */
             SERIAL_RESP_FORM(serial_resp, 'O', -1, -1, NULL);
-            ui_update_group (p->pfb, p->pui, 2);
             break;
         /* Device status received */
         case 'S':
@@ -404,7 +473,9 @@ static void protocol_parse (server_t *p, int nch)
                 } else {
                     ui_set_ritem (p->pfb, p->pui, uid, COLOR_YELLOW, -1);
 
+                    pthread_mutex_lock   (&mutex);
                     device_resp_check (pch->i2c_fd, &pitem);
+                    pthread_mutex_unlock (&mutex);
                 }
             }
             DEVICE_RESP_FORM_STR(resp, pitem.status_c, pitem.resp_s);
@@ -413,7 +484,14 @@ static void protocol_parse (server_t *p, int nch)
             break;
         case 'M':   // mac print
         case 'E':   // error msg
+            return;
         case 'X':   // Device test complete
+            {
+                int uid = nch ? UID_STATUS_R : UID_STATUS_L;
+                ui_set_ritem (p->pfb, p->pui, uid,
+                            (pitem.status_i == 1) ? COLOR_GREEN : COLOR_RED, -1);
+                pch->status = eSTATUS_PRINT;
+            }
             return;
         default :
             printf ("%s : unknown command!! (%c)\n", __func__, pitem.cmd);
