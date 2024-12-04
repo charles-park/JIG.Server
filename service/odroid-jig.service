@@ -21,7 +21,7 @@ User=root
 WorkingDirectory=/root/JIG.Server
 
 ExecStartPre=/bin/sleep 5
-ExecStart=/root/JIG.Client/service/jig-service.sh
+ExecStart=/root/JIG.Server/service/jig-service.sh
 
 # on-success의 경우 (Kill -2) 옵션으로 종료시 재시작 합니다.
 # on-failure의 경우 (kill -9) 옵션으로 종료시 재시작 합니다.
