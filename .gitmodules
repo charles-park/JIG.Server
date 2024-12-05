@@ -7,3 +7,6 @@
 [submodule "lib_i2cadc"]
 	path = lib_i2cadc
 	url = https://github.com/charles-park/lib_i2cadc
+[submodule "lib_usblp"]
+	path = lib_usblp
+	url = https://github.com/charles-park/lib_usblp

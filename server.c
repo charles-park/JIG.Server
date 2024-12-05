@@ -44,6 +44,7 @@
 #include "lib_fbui/lib_fb.h"
 #include "lib_fbui/lib_ui.h"
 #include "lib_i2cadc/lib_i2cadc.h"
+#include "lib_usblp/lib_usblp.h"
 
 #include "device_c4.h"
 #include "protocol.h"
@@ -151,8 +152,11 @@ typedef struct channel__t {
     char        rx_msg [SERIAL_RESP_SIZE +1];
     char        tx_msg [SERIAL_RESP_SIZE +1];
 
-    // mac, errmsg
-    char        nlp_msg [NLP_ERR_LINE][NLP_MAX_CHAR];
+    // nlp mac msg
+    char        nlp_mac [DEVICE_RESP_SIZE];
+    // nlp err msg
+    char        nlp_err_msg [NLP_ERR_LINE][NLP_MAX_CHAR];
+    int         nlp_err_cnt;
 }   channel_t;
 
 typedef struct server__t {
@@ -160,7 +164,8 @@ typedef struct server__t {
     fb_info_t   *pfb;
     ui_grp_t    *pui;
     ts_t        *pts;
-    channel_t   ch[2];  // channel left/right
+    channel_t   ch[2];      // channel left/right
+    int         is_usblp;   // usblp connect status
 }   server_t;
 
 
@@ -315,7 +320,7 @@ retry:
 
 static int channel_power_status (channel_t *pch)
 {
-    int pin, check_3v, check_5v, retry = 3;
+    int pin, check_3v, check_5v, retry = 2;
 
 retry:
     pthread_mutex_lock   (&mutex);
@@ -463,6 +468,8 @@ static int server_setup (server_t *p)
     if ((p->pui = ui_init (p->pfb, SERVER_UI)) == NULL) exit(1);
 
 p->pts = ts_init ("/dev/input/event2");
+p->is_usblp = usblp_config ();
+
     // left, right channel init
     channel_setup (&p->ch[0], 0);    channel_setup (&p->ch[1], 1);
 
@@ -499,6 +506,9 @@ static void protocol_parse (server_t *p, int nch)
             /* Server System Ready send */
             SERIAL_RESP_FORM(serial_resp, 'O', -1, -1, NULL);
             ui_update_group (p->pfb, p->pui, nch +1);
+
+            memset (pch->nlp_err_msg, 0, sizeof(pch->nlp_err_msg));
+            pch->nlp_err_cnt = 0;
             pch->status = eSTATUS_RUN;
             break;
         /* Device status received */
@@ -526,7 +536,17 @@ static void protocol_parse (server_t *p, int nch)
                                             pitem.gid, pitem.did, resp);
             break;
         case 'M':   // mac print
+            memset  (pch->nlp_mac, 0, DEVICE_RESP_SIZE);
+            strncpy (pch->nlp_mac, pitem.resp_s, strlen(pitem.resp_s));
+            printf ("%s : MAC Addr = %s\n", __func__, pch->nlp_mac);
+            if (p->is_usblp && (pch->status == eSTATUS_RUN))
+                usblp_print_mac (pch->nlp_mac, nch);
+            return;
         case 'E':   // error msg
+            memset  (&pch->nlp_err_msg [pch->nlp_err_cnt][0], 0, NLP_MAX_CHAR);
+            strncpy (&pch->nlp_err_msg [pch->nlp_err_cnt][0], pitem.resp_s, strlen(pitem.resp_s));
+            pch->nlp_err_cnt++;
+            printf ("%s : Err Msg(%i) = %s\n", __func__,  pitem.status_i, pitem.resp_s);
             return;
         case 'X':   // Device test complete
             {
@@ -567,97 +587,40 @@ void ts_event_check (server_t *p, int ui_id)
         case UID_STATUS_L : case UID_STATUS_R :
             pch = (ui_id == UID_STATUS_L) ? &p->ch[0] : &p->ch[1];
             SERIAL_RESP_FORM(serial_resp, 'E', -1, -1, NULL);
+            pch->nlp_err_cnt = 0;
             break;
+
+        case UID_CHANNEL_L: case UID_CHANNEL_R:
+            pch = (ui_id == UID_CHANNEL_L) ? &p->ch[0] : &p->ch[1];
+            if (pch->status == eSTATUS_PRINT) {
+                if (pch->nlp_err_cnt) {
+                    int i;
+                    for (i = 0; i < pch->nlp_err_cnt; i += 3)
+                        usblp_print_err (&pch->nlp_err_msg[0][0],
+                                         &pch->nlp_err_msg[1][0],
+                                         &pch->nlp_err_msg[2][0],
+                                        (ui_id == UID_CHANNEL_L) ? 0 : 1);
+                    // Print Err msg L/R
+                    printf ("%s : error msg printing... (ch = %d)\n",
+                        __func__, (ui_id == UID_CHANNEL_L) ? 0 : 1);
+                }
+            }
+            return;
         default :
             if ((nch = find_uitem_uid (ui_id, &pos)) == -1) return;
             pch = &p->ch[nch];
+
+            if ((ui_id == UID_MAC_L) || (ui_id == UID_MAC_R)) {
+                if (pch->status == eSTATUS_PRINT)
+                    usblp_print_mac (pch->nlp_mac, nch);
+            }
             SERIAL_RESP_FORM(serial_resp, 'R', uitem[pos].gid, uitem[pos].did, NULL);
             break;
-        case UID_CHANNEL_L: case UID_CHANNEL_R:
-            pch = (ui_id == UID_CHANNEL_L) ? &p->ch[0] : &p->ch[1];
-            if (pch->status == eSTATUS_PRINT) {
-                // Print Err msg L/R
-                printf ("%s : error msg printing... (ch = %d)\n",
-                    __func__, (ui_id == UID_CHANNEL_L) ? 0 : 1);
-            }
-            SERIAL_RESP_FORM(serial_resp, 'X', -1, -1, NULL);
-            break;
     }
     protocol_msg_tx (pch->puart, serial_resp);
     protocol_msg_tx (pch->puart, "\r\n");
 }
-#if 0
-void ts_event_check (server_t *p, int ui_id)
-{
-    char serial_resp [SERIAL_RESP_SIZE];
-    channel_t *pch;
 
-    memset (serial_resp, 0, sizeof(serial_resp));
-    switch(ui_id) {
-        case UID_STATUS_L : case UID_STATUS_R :
-            pch = (ui_id == UID_STATUS_L) ? &p->ch[0] : &p->ch[1];
-            SERIAL_RESP_FORM(serial_resp, 'E', -1, -1, NULL);
-            break;
-        case UID_MAC_L    : case UID_MAC_R    :
-            pch = (ui_id == UID_MAC_L) ? &p->ch[0] : &p->ch[1];
-            SERIAL_RESP_FORM(serial_resp, 'R', 5, 1, NULL);
-            break;
-        case UID_USB_LD_L : case UID_USB_LD_R :
-            pch = (ui_id == UID_USB_LD_L) ? &p->ch[0] : &p->ch[1];
-            SERIAL_RESP_FORM(serial_resp, 'R', 2, 1, NULL);
-            break;
-        case UID_USB_LU_L : case UID_USB_LU_R :
-            pch = (ui_id == UID_USB_LU_L) ? &p->ch[0] : &p->ch[1];
-            SERIAL_RESP_FORM(serial_resp, 'R', 2, 2, NULL);
-            break;
-        case UID_USB_RD_L : case UID_USB_RD_R :
-            pch = (ui_id == UID_USB_RD_L) ? &p->ch[0] : &p->ch[1];
-            SERIAL_RESP_FORM(serial_resp, 'R', 2, 3, NULL);
-            break;
-        case UID_USB_RU_L : case UID_USB_RU_R :
-            pch = (ui_id == UID_USB_RU_L) ? &p->ch[0] : &p->ch[1];
-            SERIAL_RESP_FORM(serial_resp, 'R', 2, 4, NULL);
-            break;
-        case UID_USB_OTG_L: case UID_USB_OTG_R:
-            pch = (ui_id == UID_USB_OTG_L) ? &p->ch[0] : &p->ch[1];
-            SERIAL_RESP_FORM(serial_resp, 'R', 2, 0, NULL);
-            break;
-        case UID_eMMC_L   : case UID_eMMC_R   :
-            pch = (ui_id == UID_eMMC_L) ? &p->ch[0] : &p->ch[1];
-            SERIAL_RESP_FORM(serial_resp, 'R', 1, 0, NULL);
-            break;
-        case UID_IPADDR_L: case UID_IPADDR_R:
-            pch = (ui_id == UID_IPADDR_L) ? &p->ch[0] : &p->ch[1];
-            SERIAL_RESP_FORM(serial_resp, 'R', 5, 0, NULL);
-            break;
-        case UID_IERF3_L : case UID_IERF3_R :
-            pch = (ui_id == UID_IERF3_L) ? &p->ch[0] : &p->ch[1];
-            SERIAL_RESP_FORM(serial_resp, 'R', 5, 2, NULL);
-            break;
-        case UID_LED100M_L: case UID_LED100M_R:
-            pch = (ui_id == UID_LED100M_L) ? &p->ch[0] : &p->ch[1];
-            SERIAL_RESP_FORM(serial_resp, 'R', 8, 12, NULL);
-            break;
-        case UID_LED1G_L  : case UID_LED1G_R  :
-            pch = (ui_id == UID_LED1G_L) ? &p->ch[0] : &p->ch[1];
-            SERIAL_RESP_FORM(serial_resp, 'R', 8, 13, NULL);
-            break;
-        case UID_CHANNEL_L: case UID_CHANNEL_R:
-            pch = (ui_id == UID_CHANNEL_L) ? &p->ch[0] : &p->ch[1];
-            if (pch->status == eSTATUS_PRINT) {
-                // Print Err msg L/R
-                printf ("%s : error msg printing... (ch = %d)\n",
-                    __func__, (ui_id == UID_CHANNEL_L) ? 0 : 1);
-            }
-            SERIAL_RESP_FORM(serial_resp, 'X', -1, -1, NULL);
-            break;
-        default :
-            return;
-    }
-    protocol_msg_tx (pch->puart, serial_resp);
-    protocol_msg_tx (pch->puart, "\r\n");
-}
-#endif
 //------------------------------------------------------------------------------
 int main (void)
 {
