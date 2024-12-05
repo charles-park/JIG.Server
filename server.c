@@ -312,18 +312,22 @@ retry:
 //------------------------------------------------------------------------------
 #define CHECK_POWER_3V      3000
 #define CHECK_POWER_5V      4900
+
 static int channel_power_status (channel_t *pch)
 {
-    int pin, check_3v, check_5v;
+    int pin, check_3v, check_5v, retry = 3;
 
+retry:
     pthread_mutex_lock   (&mutex);
     adc_board_read (pch->i2c_fd, "con1.1", &check_3v, &pin);
     adc_board_read (pch->i2c_fd, "con1.2", &check_5v, &pin);
     pthread_mutex_unlock (&mutex);
 
-    if ((check_3v > CHECK_POWER_3V) && (check_5v > CHECK_POWER_5V))
+    if ((check_3v > CHECK_POWER_3V) && (check_5v > CHECK_POWER_5V)) {
+        if (retry--) { usleep (FUNC_LOOP_DELAY);   goto retry;  }
         return 1;
-    // channel power off
+    }
+
     return 0;
 }
 //------------------------------------------------------------------------------
@@ -348,6 +352,10 @@ static void channel_ui_update (server_t *p)
             // channel power ui
             ui_set_ritem (p->pfb, p->pui, nch ? UID_CHANNEL_R : UID_CHANNEL_L,
                         COLOR_DIM_GRAY, -1);
+            if (pch->status != eSTATUS_STOP) {
+                ui_set_ritem (p->pfb, p->pui, uid, p->pui->bc.uint, -1);
+                ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "WAIT");
+            }
             pch->status = eSTATUS_STOP;
         }
 
@@ -536,6 +544,49 @@ static void protocol_parse (server_t *p, int nch)
 }
 
 //------------------------------------------------------------------------------
+static int find_uitem_uid (int ui_id, int *pos)
+{
+    int i;
+    for (i = 0; i < sizeof(uitem)/sizeof(uitem[0]); i++) {
+        *pos = i;
+        if (uitem[*pos].uid_l == ui_id)    return 0;
+        if (uitem[*pos].uid_r == ui_id)    return 1;
+    }
+    return -1;
+}
+
+//------------------------------------------------------------------------------
+void ts_event_check (server_t *p, int ui_id)
+{
+    char serial_resp [SERIAL_RESP_SIZE];
+    int pos, nch;
+    channel_t *pch;
+
+    memset (serial_resp, 0, sizeof(serial_resp));
+    switch(ui_id) {
+        case UID_STATUS_L : case UID_STATUS_R :
+            pch = (ui_id == UID_STATUS_L) ? &p->ch[0] : &p->ch[1];
+            SERIAL_RESP_FORM(serial_resp, 'E', -1, -1, NULL);
+            break;
+        default :
+            if ((nch = find_uitem_uid (ui_id, &pos)) == -1) return;
+            pch = &p->ch[nch];
+            SERIAL_RESP_FORM(serial_resp, 'R', uitem[pos].gid, uitem[pos].did, NULL);
+            break;
+        case UID_CHANNEL_L: case UID_CHANNEL_R:
+            pch = (ui_id == UID_CHANNEL_L) ? &p->ch[0] : &p->ch[1];
+            if (pch->status == eSTATUS_PRINT) {
+                // Print Err msg L/R
+                printf ("%s : error msg printing... (ch = %d)\n",
+                    __func__, (ui_id == UID_CHANNEL_L) ? 0 : 1);
+            }
+            SERIAL_RESP_FORM(serial_resp, 'X', -1, -1, NULL);
+            break;
+    }
+    protocol_msg_tx (pch->puart, serial_resp);
+    protocol_msg_tx (pch->puart, "\r\n");
+}
+#if 0
 void ts_event_check (server_t *p, int ui_id)
 {
     char serial_resp [SERIAL_RESP_SIZE];
@@ -606,7 +657,7 @@ void ts_event_check (server_t *p, int ui_id)
     protocol_msg_tx (pch->puart, serial_resp);
     protocol_msg_tx (pch->puart, "\r\n");
 }
-
+#endif
 //------------------------------------------------------------------------------
 int main (void)
 {

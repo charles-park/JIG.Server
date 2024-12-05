@@ -1,9 +1,9 @@
 #
-# JIG CLIENT APP
+# JIG SERVER APP
 #
 CC      = gcc
 CFLAGS  = -W -Wall -g
-CFLAGS  += -D__CLIENT_APP__
+CFLAGS  += -D__SERVER_APP__
 # CFLAGS  += -D__IPERF3_ODROID__
 
 # JIG R/W Test
