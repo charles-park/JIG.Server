@@ -648,7 +648,7 @@ void ts_event_check (server_t *p, int ui_id)
             pch = &p->ch[nch];
 
             if ((ui_id == UID_MAC_L) || (ui_id == UID_MAC_R)) {
-                if (pch->status == eSTATUS_PRINT)
+                if (pch->status != eSTATUS_RUN)
                     usblp_print_mac (pch->nlp_mac, nch);
             }
             if (!pch->ready)    {
