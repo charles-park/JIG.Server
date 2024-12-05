@@ -620,11 +620,11 @@ void ts_event_check (server_t *p, int ui_id)
     memset (serial_resp, 0, sizeof(serial_resp));
     switch(ui_id) {
         case UID_STATUS_L : case UID_STATUS_R :
-                pch = (ui_id == UID_STATUS_L) ? &p->ch[0] : &p->ch[1];
-            if (!pch->ready)    {
-                SERIAL_RESP_FORM(serial_resp, 'E', -1, -1, NULL);
-                pch->nlp_err_cnt = 0;
-            }
+            pch = (ui_id == UID_STATUS_L) ? &p->ch[0] : &p->ch[1];
+            if (!pch->ready)    return;
+
+            SERIAL_RESP_FORM(serial_resp, 'E', -1, -1, NULL);
+            pch->nlp_err_cnt = 0;
             break;
 
         case UID_CHANNEL_L: case UID_CHANNEL_R:
