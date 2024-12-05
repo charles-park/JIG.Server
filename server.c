@@ -145,6 +145,7 @@ enum { eSTATUS_STOP, eSTATUS_WAIT, eSTATUS_RUN, eSTATUS_PRINT,  eSTATUS_ERR, eST
 
 typedef struct channel__t {
     int         status;
+    int         ready;  /* ready signal received */
 
     int         i2c_fd;
     uart_t      *puart;
@@ -324,7 +325,7 @@ retry:
         if (retry--) { usleep (FUNC_LOOP_DELAY);   goto retry;  }
         return 1;
     }
-
+    pch->ready = 0;
     return 0;
 }
 //------------------------------------------------------------------------------
@@ -361,6 +362,7 @@ static void channel_ui_update (server_t *p)
                 break;
             case eSTATUS_WAIT:
                 pch->status = eSTATUS_RUN;
+                pch->nlp_err_cnt = 0;
                 ui_update_group (p->pfb, p->pui, nch +1);
                 ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "WAIT");
                 break;
@@ -546,6 +548,7 @@ static void protocol_parse (server_t *p, int nch)
 
             memset (pch->nlp_err_msg, 0, sizeof(pch->nlp_err_msg));
             pch->nlp_err_cnt = 0;
+            pch->ready  = 1;
             pch->status = eSTATUS_RUN;
             break;
         /* Device status received */
@@ -617,14 +620,16 @@ void ts_event_check (server_t *p, int ui_id)
     memset (serial_resp, 0, sizeof(serial_resp));
     switch(ui_id) {
         case UID_STATUS_L : case UID_STATUS_R :
-            pch = (ui_id == UID_STATUS_L) ? &p->ch[0] : &p->ch[1];
-            SERIAL_RESP_FORM(serial_resp, 'E', -1, -1, NULL);
-            pch->nlp_err_cnt = 0;
+                pch = (ui_id == UID_STATUS_L) ? &p->ch[0] : &p->ch[1];
+            if (!pch->ready)    {
+                SERIAL_RESP_FORM(serial_resp, 'E', -1, -1, NULL);
+                pch->nlp_err_cnt = 0;
+            }
             break;
 
         case UID_CHANNEL_L: case UID_CHANNEL_R:
             pch = (ui_id == UID_CHANNEL_L) ? &p->ch[0] : &p->ch[1];
-            if (pch->status == eSTATUS_PRINT) {
+            if (pch->status != eSTATUS_RUN) {
                 if (pch->nlp_err_cnt) {
                     int i;
                     for (i = 0; i < pch->nlp_err_cnt; i += 3)
@@ -645,6 +650,10 @@ void ts_event_check (server_t *p, int ui_id)
             if ((ui_id == UID_MAC_L) || (ui_id == UID_MAC_R)) {
                 if (pch->status == eSTATUS_PRINT)
                     usblp_print_mac (pch->nlp_mac, nch);
+            }
+            if (!pch->ready)    {
+                printf ("%s : Device not ready. (ch = %d)\n", __func__, nch);
+                return;
             }
             SERIAL_RESP_FORM(serial_resp, 'R', uitem[pos].gid, uitem[pos].did, NULL);
             break;
