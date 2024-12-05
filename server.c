@@ -70,9 +70,9 @@
 //------------------------------------------------------------------------------
 const char *SERVER_I2C_PATH[] = {
     // CH-L
-    { "/dev/i2c-0" },
+    "/dev/i2c-0",
     // CH-R
-    { "/dev/i2c-1" },
+    "/dev/i2c-1",
 };
 
 // ODROID-C4 USB PATH
@@ -83,9 +83,9 @@ const char *SERVER_I2C_PATH[] = {
 
 const char *SERVER_UART_PATH[] = {
     // CH-L
-    { USB_L_UP },
+    USB_L_UP,
     // CH-R
-    { USB_R_UP },
+    USB_R_UP,
 };
 
 //------------------------------------------------------------------------------
@@ -278,20 +278,13 @@ static void toupperstr (char *p)
 }
 
 //------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-static int print_test_result (server_t *p)
-{
-    return 0;
-}
-
-//------------------------------------------------------------------------------
 static int get_board_ip (char *ip_addr)
 {
-    int fd, retry_cnt = 10;
+    int fd, retry_cnt = 100;
     struct ifreq ifr;
 
 retry:
-    usleep (500 * 1000);    // 500ms delay
+    usleep (100 * 1000);    // 100ms delay
     /* this entire function is almost copied from ethtool source code */
     /* Open control socket. */
     if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
@@ -307,7 +300,6 @@ retry:
         if (retry_cnt--)    goto retry;
         return 0;
     }
-    memset (ip_addr, 0x00, sizeof(ip_addr));
     inet_ntop(AF_INET, ifr.ifr_addr.sa_data+2, ip_addr, sizeof(struct sockaddr));
     printf ("%s : ip_address = %s\n", __func__, ip_addr);
 
@@ -378,13 +370,15 @@ static void channel_ui_update (server_t *p)
                 ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "RUNNING");
                 break;
             case eSTATUS_PRINT:
+
+                ui_set_ritem (p->pfb, p->pui, uid,
+                            pch->nlp_err_cnt ? COLOR_RED : COLOR_GREEN, -1);
                 ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "FINISH");
                 break;
             case eSTATUS_ERR:
                 break;
         }
     }
-    return 0;
 }
 
 //------------------------------------------------------------------------------
@@ -462,13 +456,56 @@ static int channel_setup (channel_t *pch, int nch)
 }
 
 //------------------------------------------------------------------------------
+static int find_ts_event (void)
+{
+    FILE *fp;
+    char cmd  [STR_PATH_LENGTH];
+    int i = 0;
+
+    /*
+        find /dev/input -name event*
+        udevadm info -a -n /dev/input/event3 | grep 0705
+    */
+    while (1) {
+        memset  (cmd, 0, sizeof(cmd));
+        sprintf (cmd, "/dev/input/event%d", i);
+        if (access  (cmd, F_OK))    return -1;
+
+        memset  (cmd, 0, sizeof(cmd));
+        sprintf (cmd, "udevadm info -a -n /dev/input/event%d | grep 0705", i);
+        if ((fp = popen(cmd, "r")) != NULL) {
+            memset (cmd, 0x00, sizeof(cmd));
+            while (fgets (cmd, sizeof(cmd), fp) != NULL) {
+                if (strstr (cmd, "0705") != NULL) {
+                    return i;
+                    pclose (fp);
+                }
+            }
+        }
+        i++;
+    }
+}
+
+//------------------------------------------------------------------------------
 static int server_setup (server_t *p)
 {
     if ((p->pfb = fb_init (SERVER_FB)) == NULL)         exit(1);
     if ((p->pui = ui_init (p->pfb, SERVER_UI)) == NULL) exit(1);
 
-p->pts = ts_init ("/dev/input/event2");
-p->is_usblp = usblp_config ();
+    // find ts event...
+    {
+        int event_no = find_ts_event();
+        char ts_event[STR_PATH_LENGTH];
+
+        if (event_no != -1) {
+            memset  (ts_event, 0, sizeof(ts_event));
+            sprintf (ts_event, "/dev/input/event%d", event_no);
+            p->pts = ts_init (ts_event);
+            printf ("%s : ts_event path = %s\n", __func__, ts_event);
+        }
+    }
+    // usb label printer setting
+    p->is_usblp = usblp_config ();
 
     // left, right channel init
     channel_setup (&p->ch[0], 0);    channel_setup (&p->ch[1], 1);
@@ -549,12 +586,7 @@ static void protocol_parse (server_t *p, int nch)
             printf ("%s : Err Msg(%i) = %s\n", __func__,  pitem.status_i, pitem.resp_s);
             return;
         case 'X':   // Device test complete
-            {
-                int uid = nch ? UID_STATUS_R : UID_STATUS_L;
-                ui_set_ritem (p->pfb, p->pui, uid,
-                            (pitem.status_i == 1) ? COLOR_GREEN : COLOR_RED, -1);
-                pch->status = eSTATUS_PRINT;
-            }
+            pch->status = eSTATUS_PRINT;
             return;
         default :
             printf ("%s : unknown command!! (%c)\n", __func__, pitem.cmd);
