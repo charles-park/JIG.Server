@@ -101,11 +101,12 @@ int device_resp_parse (const char *resp_msg, parse_resp_data_t *pdata)
         if ((ptr = strtok (NULL, ",")) != NULL) {
             {
                 int i, pos;
-                for (i = 0, pos = 0; i < DEVICE_RESP_SIZE -2; i++)
-                {
-                    if ((*(ptr + i) != 0x20) && (*(ptr + i) != 0x00))
-                        pdata->resp_s[pos++] = *(ptr + i);
+                for (i = 0; i < DEVICE_RESP_SIZE -2; i++) {
+                    if ((*(ptr + i) != 0x20) && (*(ptr + i) != 0x00)) break;
                 }
+
+                for (pos = 0; i < DEVICE_RESP_SIZE -2; i++)
+                    pdata->resp_s[pos++] = *(ptr + i);
             }
             pdata->resp_i = atoi(ptr);
         }
