@@ -10,3 +10,6 @@
 [submodule "lib_usblp"]
 	path = lib_usblp
 	url = https://github.com/charles-park/lib_usblp
+[submodule "lib_gpio"]
+	path = lib_gpio
+	url = https://github.com/charles-park/lib_gpio

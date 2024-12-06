@@ -45,6 +45,7 @@
 #include "lib_fbui/lib_ui.h"
 #include "lib_i2cadc/lib_i2cadc.h"
 #include "lib_usblp/lib_usblp.h"
+#include "lib_gpio/lib_gpio.h"
 
 #include "device_c4.h"
 #include "protocol.h"
@@ -329,6 +330,24 @@ retry:
     return 0;
 }
 //------------------------------------------------------------------------------
+static int find_ts_event (void);
+static void ts_reinit (server_t *p)
+{
+    // find ts event...
+    int event_no;
+    char ts_event[STR_PATH_LENGTH];
+
+    if (p->pts) ts_deinit (p->pts);
+
+    event_no = find_ts_event();
+    if (event_no != -1) {
+        memset  (ts_event, 0, sizeof(ts_event));
+        sprintf (ts_event, "/dev/input/event%d", event_no);
+        p->pts = ts_init (ts_event);
+        printf ("%s : ts_event path = %s\n", __func__, ts_event);
+    }
+}
+
 static void channel_ui_update (server_t *p)
 {
     channel_t *pch;
@@ -384,6 +403,8 @@ static void channel_ui_update (server_t *p)
 }
 
 //------------------------------------------------------------------------------
+#define BUTTON_TS_RESET     482 // Header40 7 Pin
+
 static void *thread_ui_func (void *pserver)
 {
     static int onoff = 0;
@@ -402,6 +423,16 @@ static void *thread_ui_func (void *pserver)
         if (onoff)  ui_update (p->pfb, p->pui, -1);
 
         channel_ui_update (p);
+        {
+            int bt_status = 0;
+            if (gpio_get_value(BUTTON_TS_RESET, &bt_status))
+            if (bt_status)  {
+                ui_set_ritem (p->pfb, p->pui, UID_ALIVE,
+                            onoff ? COLOR_PINK : p->pui->bc.uint, -1);
+
+                ts_reinit (p);
+            }
+        }
         usleep (UPDATE_UI_DELAY);
     }
     return pserver;
@@ -465,8 +496,7 @@ static int find_ts_event (void)
     int i = 0;
 
     /*
-        find /dev/input -name event*
-        udevadm info -a -n /dev/input/event3 | grep 0705
+        find /dev/input -name event*        udevadm info -a -n /dev/input/event3 | grep 0705
     */
     while (1) {
         memset  (cmd, 0, sizeof(cmd));
@@ -505,6 +535,8 @@ static int server_setup (server_t *p)
             p->pts = ts_init (ts_event);
             printf ("%s : ts_event path = %s\n", __func__, ts_event);
         }
+        gpio_export (BUTTON_TS_RESET);
+        gpio_direction (BUTTON_TS_RESET, 0);
     }
     // usb label printer setting
     p->is_usblp = usblp_config ();
