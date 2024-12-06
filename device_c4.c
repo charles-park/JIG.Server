@@ -173,6 +173,9 @@ int device_resp_check (int fd, parse_resp_data_t *pdata)
             {
                 int header[HEADER_PIN_MAX +1];
                 int pin, i;
+
+                usleep (100 * 1000);    // gpio setup stable delay
+
                 memset (header, 0, sizeof(header));
                 //int adc_board_read (int fd, const char *h_name, int *read_value, int *cnt)
                 adc_board_read (fd, pdata->resp_s, &header[0], &pin);
