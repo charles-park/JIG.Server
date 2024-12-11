@@ -46,13 +46,13 @@ root@odroid:~# git config --global user.name "charles-park"
 
 ### Clone the reopsitory with submodule
 ```
-root@odroid:~# git clone --recursive https://github.com/charles-park/JIG.Client
+root@odroid:~# git clone --recursive https://github.com/charles-park/JIG.Server
 
 or
 
-root@odroid:~# git clone https://github.com/charles-park/JIG.Client
-root@odroid:~# cd JIG.Client
-root@odroid:~/JIG.Client# git submodule update --init --recursive
+root@odroid:~# git clone https://github.com/charles-park/JIG.Server
+root@odroid:~# cd JIG.Server
+root@odroid:~/JIG.Server# git submodule update --init --recursive
 ```
 
 ### Auto login
