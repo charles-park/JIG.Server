@@ -1,5 +1,5 @@
 # JIG.Server
-2024 New version JIG-Server
+2024 New version JIG-Server (branch jig-c5)
 * Document : https://docs.google.com/spreadsheets/d/1igBObU7CnP6FRaRt-x46l5R77-8uAKEskkhthnFwtpY/edit?gid=719914769#gid=719914769
 
 ### ODROID-C4 (2024-11-18)
@@ -46,11 +46,11 @@ root@odroid:~# git config --global user.name "charles-park"
 
 ### Clone the reopsitory with submodule
 ```
-root@odroid:~# git clone --recursive https://github.com/charles-park/JIG.Server
+root@odroid:~# git clone -b jig-c5 --recursive https://github.com/charles-park/JIG.Server
 
 or
 
-root@odroid:~# git clone https://github.com/charles-park/JIG.Server
+root@odroid:~# git clone -b jig-c5 https://github.com/charles-park/JIG.Server
 root@odroid:~# cd JIG.Server
 root@odroid:~/JIG.Server# git submodule update --init --recursive
 ```
