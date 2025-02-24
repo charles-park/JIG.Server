@@ -47,7 +47,7 @@
 #include "lib_usblp/lib_usblp.h"
 #include "lib_gpio/lib_gpio.h"
 
-#include "device_c4.h"
+#include "device_check.h"
 #include "protocol.h"
 
 //------------------------------------------------------------------------------
@@ -60,7 +60,7 @@
 #define SERVER_FB       "/dev/fb0"
 #define SERVER_UART     "/dev/ttyUSB1"
 
-#define SERVER_UI       "ui_c4_server.cfg"
+#define SERVER_UI       "ui_server.cfg"
 
 #define UART_BAUDRATE   115200
 
@@ -94,6 +94,16 @@ const char *SERVER_UART_PATH[] = {
 #define UID_ALIVE       0
 #define UID_IPADDR      4
 
+#define UID_CHANNEL_L   22
+#define UID_CHANNEL_R   26
+
+#define UID_STATUS_L    182
+#define UID_STATUS_R    186
+
+#define UID_MAC_L       62
+#define UID_MAC_R       66
+
+#if 0
 #define UID_IPADDR_L    42
 #define UID_IPADDR_R    46
 
@@ -129,6 +139,7 @@ const char *SERVER_UART_PATH[] = {
 
 #define UID_LED1G_L     153
 #define UID_LED1G_R     157
+#endif
 
 #define RUN_BOX_ON      RGB_TO_UINT(204, 204, 0)
 #define RUN_BOX_OFF     RGB_TO_UINT(153, 153, 0)
