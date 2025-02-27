@@ -32,8 +32,7 @@
 #include <pthread.h>
 
 //------------------------------------------------------------------------------
-#include "device_check.h"
-#include "lib_i2cadc/lib_i2cadc.h"
+#include "server.h"
 
 //------------------------------------------------------------------------------
 static int iperf3_client_func (const char *server_ip)
