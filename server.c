@@ -198,6 +198,8 @@ static void *thread_ui_func (void *arg)
 
                 ts_reinit (p);
             }
+            ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_USBLP],
+                p->usblp_status ? COLOR_GREEN : COLOR_DIM_GRAY, -1);
         }
         usleep (UPDATE_UI_DELAY);
     }
@@ -323,9 +325,9 @@ static void ts_event_check (server_t *p, int ui_id)
             if (pch->err_cnt) {
                 int i;
                 for (i = 0; i < pch->err_cnt; i += 3)
-                    usblp_print_err (&pch->err_msg[0][0],
-                                     &pch->err_msg[1][0],
-                                     &pch->err_msg[2][0],
+                    usblp_print_err (&pch->err_msg[i + 0][0],
+                                     &pch->err_msg[i + 1][0],
+                                     &pch->err_msg[i + 2][0],
                                     (ui_id == p->u_item[eUID_CH_L]) ? 0 : 1);
                 // Print Err msg L/R
                 printf ("%s : error msg printing... (ch = %d)\n",
@@ -334,6 +336,12 @@ static void ts_event_check (server_t *p, int ui_id)
         }
         return;
     }
+    // printer reinit
+    if (ui_id == p->u_item[eUID_USBLP]) {
+        p->usblp_status = usblp_config ();
+        return;
+    }
+
     if ((nch = find_ditem_uid (p, ui_id, &pos)) == -1) return;
     pch = &p->ch[nch];
 
