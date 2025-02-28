@@ -143,6 +143,9 @@ static void parse_S_cmd (server_t *p, char *cfg)
 
         if ((tok = strtok (NULL, ",")) != NULL)
             p->usblp_mode = atoi (tok);
+
+        if ((tok = strtok (NULL, ",")) != NULL)
+            find_file_path (tok, p->ui_path);
     }
 }
 
@@ -335,11 +338,11 @@ void ts_reinit (server_t *p)
 }
 
 //------------------------------------------------------------------------------
-int server_setup (server_t *p)
+int server_setup (server_t *p, const char *cfg_fname)
 {
-    if (server_config (p, SERVER_CFG)) {
-        if ((p->pfb = fb_init (p->fb_path)) == NULL)        exit(1);
-        if ((p->pui = ui_init (p->pfb, SERVER_UI)) == NULL) exit(1);
+    if (server_config (p, cfg_fname)) {
+        if ((p->pfb = fb_init (p->fb_path)) == NULL)            exit(1);
+        if ((p->pui = ui_init (p->pfb, p->ui_path)) == NULL)    exit(1);
 
         // touch init
         ts_reinit (p);

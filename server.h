@@ -132,6 +132,8 @@ typedef struct server__t {
     // HDMI UI
     char        fb_path[STR_PATH_LENGTH];
     fb_info_t   *pfb;
+
+    char        ui_path[STR_PATH_LENGTH];
     ui_grp_t    *pui;
     ts_t        *pts;
 
@@ -160,7 +162,7 @@ typedef struct server__t {
 // setup.c
 //------------------------------------------------------------------------------
 extern void ts_reinit       (server_t *p);
-extern int  server_setup    (server_t *p);
+extern int  server_setup    (server_t *p, const char *cfg_fname);
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------

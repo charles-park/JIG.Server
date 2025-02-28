@@ -41,8 +41,6 @@
 #include <sys/ioctl.h>
 
 //------------------------------------------------------------------------------
-
-//------------------------------------------------------------------------------
 #include "server.h"
 
 //------------------------------------------------------------------------------
@@ -359,15 +357,59 @@ static void ts_event_check (server_t *p, int ui_id)
 }
 
 //------------------------------------------------------------------------------
-int main (void)
+static char *OPT_CFG_FNAME = SERVER_CFG;
+
+static void print_usage (const char *prog)
+{
+    puts("");
+    printf("Usage: %s [-c:server config file]\n", prog);
+    puts("\n"
+        "  e.g) -c {server cfg filename} : default {server.cfg}\n"
+        "\n"
+    );
+    exit(1);
+}
+
+//------------------------------------------------------------------------------
+static void parse_opts (int argc, char *argv[])
+{
+    while (1) {
+        static const struct option lopts[] = {
+            { "config"   ,  1, 0, 'c' },
+            { NULL, 0, 0, 0 },
+        };
+        int c;
+
+        c = getopt_long(argc, argv, "c:", lopts, NULL);
+
+        if (c == -1)
+            break;
+
+        switch (c) {
+        case 'c':
+            OPT_CFG_FNAME = optarg;
+            break;
+        case 'h':
+        default:
+            print_usage(argv[0]);
+            break;
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
+int main (int argc, char *argv[])
 {
     int nch;
     server_t server;
 
     memset (&server, 0, sizeof(server));
 
+    // option check
+    parse_opts(argc, argv);
+
     // UI, UART
-    server_setup (&server);
+    server_setup (&server, OPT_CFG_FNAME);
 
     pthread_create (&thread_ui,    NULL, thread_ui_func,    (void *)&server);
 
