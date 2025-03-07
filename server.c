@@ -188,16 +188,18 @@ static void *thread_ui_func (void *arg)
 
         channel_ui_update (p);
         {
-            int bt_status = 0;
-            if (gpio_get_value(p->ts_reset_gpio, &bt_status))
-            if (bt_status == p->ts_reset_level)  {
-                ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_ALIVE],
-                            onoff ? COLOR_PINK : p->pui->bc.uint, -1);
+            if (p->ts_reset_gpio != -1) {
+                int bt_status = 0;
+                if (gpio_get_value(p->ts_reset_gpio, &bt_status))
+                if (bt_status == p->ts_reset_level)  {
+                    ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_ALIVE],
+                                onoff ? COLOR_PINK : p->pui->bc.uint, -1);
 
-                ts_reinit (p);
+                    ts_reinit (p);
+                }
+                ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_USBLP],
+                    p->usblp_status ? COLOR_GREEN : COLOR_DIM_GRAY, -1);
             }
-            ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_USBLP],
-                p->usblp_status ? COLOR_GREEN : COLOR_DIM_GRAY, -1);
         }
         usleep (UPDATE_UI_DELAY);
     }
@@ -358,6 +360,7 @@ static void ts_event_check (server_t *p, int ui_id)
 
 //------------------------------------------------------------------------------
 static char *OPT_CFG_FNAME = SERVER_CFG;
+static int OPT_SW_VALUE = 0; /* 0 : default config, 1 : force odroid-c4 mode */
 
 static void print_usage (const char *prog)
 {
@@ -376,11 +379,12 @@ static void parse_opts (int argc, char *argv[])
     while (1) {
         static const struct option lopts[] = {
             { "config"   ,  1, 0, 'c' },
+            { "gpio num" ,  1, 0, 'g' },
             { NULL, 0, 0, 0 },
         };
         int c;
 
-        c = getopt_long(argc, argv, "c:", lopts, NULL);
+        c = getopt_long(argc, argv, "c:g:", lopts, NULL);
 
         if (c == -1)
             break;
@@ -388,6 +392,22 @@ static void parse_opts (int argc, char *argv[])
         switch (c) {
         case 'c':
             OPT_CFG_FNAME = optarg;
+            break;
+        case 'g':
+            {
+                int gpio_num = -1, value = 0;
+                gpio_num = atoi(optarg);
+                if (gpio_export (gpio_num)) {
+                    if (gpio_direction (gpio_num, 0)) {
+                        if (gpio_get_value (gpio_num, &value))
+                            OPT_SW_VALUE = (value == 0) ? 1 :0;
+                        else
+                            OPT_SW_VALUE = 0;
+
+                        printf ("%s : gpio = %d, value = %d\n", __func__, gpio_num, value);
+                    }
+                }
+            };
             break;
         case 'h':
         default:
@@ -408,8 +428,8 @@ int main (int argc, char *argv[])
     // option check
     parse_opts(argc, argv);
 
-    // UI, UART
-    server_setup (&server, OPT_CFG_FNAME);
+    // UI, UART (sw value 1 = server.c4.cfg, sw value 0 = OPT_CFG_FNAME)
+    server_setup (&server, OPT_SW_VALUE ? "server.c4.cfg" : OPT_CFG_FNAME);
 
     pthread_create (&thread_ui,    NULL, thread_ui_func,    (void *)&server);
 

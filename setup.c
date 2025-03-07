@@ -329,7 +329,7 @@ void ts_reinit (server_t *p)
         printf ("%s : ts_event path = %s\n", __func__, ts_event);
 
         // ts reset button define
-        if (p->ts_reset_gpio != 0) {
+        if (p->ts_reset_gpio != -1) {
             gpio_export    (p->ts_reset_gpio);
             gpio_direction (p->ts_reset_gpio, 0);   // input
             printf ("%s : ts reset button = %d\n", __func__, p->ts_reset_gpio);
