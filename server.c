@@ -197,10 +197,10 @@ static void *thread_ui_func (void *arg)
 
                     ts_reinit (p);
                 }
-                ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_USBLP],
-                    p->usblp_status ? COLOR_GREEN : COLOR_DIM_GRAY, -1);
             }
-        }
+            ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_USBLP],
+                p->usblp_status ? COLOR_GREEN : COLOR_DIM_GRAY, -1);
+    }
         usleep (UPDATE_UI_DELAY);
     }
     return arg;
