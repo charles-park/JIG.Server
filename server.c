@@ -313,10 +313,14 @@ static void ts_event_check (server_t *p, int ui_id)
 
     if ((ui_id == p->u_item[eUID_STATUS_L]) || (ui_id == p->u_item[eUID_STATUS_R])) {
         pch = (ui_id == p->u_item[eUID_STATUS_L]) ? &p->ch[0] : &p->ch[1];
-        if (!pch->ready)    return;
+
+        if (!pch->ready || (pch->status != eSTATUS_RUN))    return;
 
         SERIAL_RESP_FORM(serial_resp, 'E', -1, -1, NULL);
+        protocol_msg_tx (pch->puart, serial_resp);
+        protocol_msg_tx (pch->puart, "\r\n");
         pch->err_cnt = 0;
+        return;
     }
 
     if ((ui_id == p->u_item[eUID_CH_L]) || (ui_id == p->u_item[eUID_CH_R])) {
@@ -348,6 +352,7 @@ static void ts_event_check (server_t *p, int ui_id)
     if ((ui_id == p->u_item[eUID_MAC_L]) || (ui_id == p->u_item[eUID_MAC_R])) {
         if (pch->status != eSTATUS_RUN)
             usblp_print_mac (pch->mac, nch);
+        return;
     }
     if (!pch->ready)    {
         printf ("%s : Device not ready. (ch = %d)\n", __func__, nch);
