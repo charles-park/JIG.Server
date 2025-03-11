@@ -322,7 +322,7 @@ static void ts_event_check (server_t *p, int ui_id)
 
         if (!pch->ready || (pch->status != eSTATUS_RUN))    return;
 
-        SERIAL_RESP_FORM(serial_resp, 'E', -1, -1, NULL);
+        SERIAL_RESP_FORM(serial_resp, 'X', -1, -1, NULL);
         protocol_msg_tx (pch->puart, serial_resp);
         protocol_msg_tx (pch->puart, "\r\n");
         pch->err_cnt = 0;
