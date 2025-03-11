@@ -95,6 +95,13 @@ typedef struct pw_item__t {
     int read_mV;
 }   pw_item_t;
 
+typedef struct h_item__t {
+    int did;    // device id (0=h40, 1=h7...)
+    int pin;    // header pin
+    int max;    // check max volt
+    int min;    // check min volt
+}   h_item_t;
+
 //------------------------------------------------------------------------------
 /* USBLP Printer Info */
 #define USBLP_MAX_CHAR  19
@@ -147,6 +154,10 @@ typedef struct server__t {
     // Device display item
     d_item_t    d_item[100];
     int         d_item_cnt;
+
+    // header check item
+    h_item_t    h_item[10];
+    int         h_item_cnt;
 
     // usblp connect status
     int         usblp_status;

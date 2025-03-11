@@ -115,9 +115,9 @@ int device_resp_parse (const char *resp_msg, parse_resp_data_t *pdata)
 }
 
 //------------------------------------------------------------------------------
-int device_resp_check (int fd, parse_resp_data_t *pdata)
+int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
 {
-            /* Device request I2C ADC Check */
+    /* Device request I2C ADC Check */
     switch (pdata->gid) {
         /* IR Thread running */
         case eGID_IR:
@@ -134,29 +134,12 @@ int device_resp_check (int fd, parse_resp_data_t *pdata)
         case eGID_LED:
             {
                 int value = 0, pin, i, adc_read;
-                for (i = 0; i < 400; i++) {
+                for (i = 0; i < 10; i++) {
                     adc_board_read (fd, pdata->resp_s, &adc_read, &pin);
                     if (value < adc_read)
                         value = adc_read;
 
-                    switch (DEVICE_ID(pdata->did)) {
-                        // power, alive
-                        case 0: case 1:
-                            if (DEVICE_ACTION(pdata->did)) {
-                                if (value > 600) i = 400;
-                            } else {
-                                if (value < 400) i = 400;
-                            }
-                            break;
-                        default :
-                            if (DEVICE_ACTION(pdata->did)) {
-                                if (value > 300) i = 400;
-                            } else {
-                                if (value < 100) i = 400;
-                            }
-                            break;
-                    }
-                    usleep (1000);
+                    usleep (10000);
                 }
                 printf ("%s : led value = %d\n", __func__, value);
                 memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
@@ -164,38 +147,48 @@ int device_resp_check (int fd, parse_resp_data_t *pdata)
             }
             break;
         case eGID_HEADER:
-            // i2c line value update
-            //
 #define HEADER_PIN_MAX  40
 #define GPIO_LOW_mV     100
 #define GPIO_HIGH_mV    3000
             {
                 int header[HEADER_PIN_MAX +1];
-                int pin, i;
+                int pin, i, max_mv = GPIO_HIGH_mV, min_mv = GPIO_LOW_mV;
 
+                // Header max min config
+                for (i = 0; i < p->h_item_cnt; i++) {
+                    if (p->h_item[i].pin)   continue;
+                    if ((DEVICE_ID(pdata->did) == p->h_item[i].did)) {
+                        max_mv = p->h_item[i].max;  min_mv = p->h_item[i].min;
+                        break;
+                    }
+                }
                 usleep (100 * 1000);    // gpio setup stable delay
 
                 memset (header, 0, sizeof(header));
                 //int adc_board_read (int fd, const char *h_name, int *read_value, int *cnt)
                 adc_board_read (fd, pdata->resp_s, &header[0], &pin);
 
-                // Header 40
-                if (DEVICE_ID(pdata->did) == 0) {
-                    header[3  -1] = (header[3  -1] < 1500) ? 0 : (GPIO_HIGH_mV +1);
-                    header[5  -1] = (header[5  -1] < 1500) ? 0 : (GPIO_HIGH_mV +1);
-                    header[27 -1] = (header[27 -1] <  500) ? 0 : (GPIO_HIGH_mV +1);
-                    header[28 -1] = (header[28 -1] <  500) ? 0 : (GPIO_HIGH_mV +1);
+                // Header pin config
+                for (i = 0; i < p->h_item_cnt; i++) {
+                    if (!p->h_item[i].pin)  continue;
+                    if ((DEVICE_ID(pdata->did) == p->h_item[i].did)) {
+                        if      (header[p->h_item[i].pin -1] >= p->h_item[i].max)
+                            header[p->h_item[i].pin -1] = max_mv;
+                        else if (header[p->h_item[i].pin -1] <= p->h_item[i].min)
+                            header[p->h_item[i].pin -1] = min_mv;
+                    }
                 }
+
                 memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
                 for (i = 0, pin = 0; i < DEVICE_RESP_SIZE -2; i ++) {
                     pin = (i * 2);
-                    if      ((header[pin] < GPIO_LOW_mV)  && (header[pin + 1] < GPIO_LOW_mV))
+                    if      ((header[pin] <= min_mv) && (header[pin + 1] <= min_mv))
                         pdata->resp_s[i] = '0';
-                    else if ((header[pin] > GPIO_HIGH_mV) && (header[pin + 1] < GPIO_LOW_mV))
+                    else if ((header[pin] >= max_mv) && (header[pin + 1] <= min_mv))
                         pdata->resp_s[i] = '1';
-                    else if ((header[pin] < GPIO_LOW_mV)  && (header[pin + 1] > GPIO_HIGH_mV))
+                    else if ((header[pin] <= min_mv) && (header[pin + 1] >= max_mv))
                         pdata->resp_s[i] = '2';
-                    else if ((header[pin] > GPIO_HIGH_mV) && (header[pin + 1] > GPIO_HIGH_mV))
+                    else if ((header[pin] >= max_mv) && (header[pin + 1] >= max_mv))
                         pdata->resp_s[i] = '3';
                     else
                         pdata->resp_s[i] = '-';
@@ -203,7 +196,7 @@ int device_resp_check (int fd, parse_resp_data_t *pdata)
                 printf ("%s : %s\n", __func__, pdata->resp_s);
             }
             break;
-        /* not implement */
+/* not implement */
         case eGID_PWM: case eGID_GPIO: case eGID_AUDIO:
         default:
             pdata->status_i = 0;

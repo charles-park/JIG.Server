@@ -44,6 +44,12 @@
 #include "server.h"
 
 //------------------------------------------------------------------------------
+// device_check.c
+//------------------------------------------------------------------------------
+extern int  device_resp_parse   (const char *resp, parse_resp_data_t *pdata);
+extern int  device_resp_check   (server_t *p, int fd, parse_resp_data_t *pdata);
+
+//------------------------------------------------------------------------------
 static int  get_board_ip        (char *ip_addr);
 static int  channel_power_status(channel_t *pch);
 static void channel_ui_update   (server_t *p);
@@ -271,7 +277,7 @@ static void protocol_parse (server_t *p, int nch)
                     ui_set_ritem (p->pfb, p->pui, uid, COLOR_YELLOW, -1);
 
                     pthread_mutex_lock   (&mutex);
-                    device_resp_check (pch->i2c_fd, &pitem);
+                    device_resp_check (p, pch->i2c_fd, &pitem);
                     pthread_mutex_unlock (&mutex);
                 }
             }

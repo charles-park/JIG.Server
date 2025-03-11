@@ -203,6 +203,28 @@ static void parse_P_cmd (server_t *p, char *cfg)
 }
 
 //------------------------------------------------------------------------------
+static void parse_H_cmd (server_t *p, char *cfg)
+{
+    char *tok;
+
+    if (strtok (cfg, ",") != NULL) {
+        if ((tok = strtok (NULL, ",")) != NULL)
+            p->h_item[p->h_item_cnt].did = atoi (tok);
+
+        if ((tok = strtok (NULL, ",")) != NULL)
+            p->h_item[p->h_item_cnt].pin = atoi (tok);
+
+        if ((tok = strtok (NULL, ",")) != NULL)
+            p->h_item[p->h_item_cnt].max = atoi (tok);
+
+        if ((tok = strtok (NULL, ",")) != NULL)
+            p->h_item[p->h_item_cnt].min = atoi (tok);
+
+        p->h_item_cnt++;
+    }
+}
+
+//------------------------------------------------------------------------------
 static void parse_T_cmd (server_t *p, char *cfg)
 {
     char *tok;
@@ -304,6 +326,7 @@ static int server_config (server_t *p, const char *cfg_fname)
             case 'P':   parse_P_cmd (p, buf);  break;
             case 'T':   parse_T_cmd (p, buf);  break;
             case 'D':   parse_D_cmd (p, buf);  break;
+            case 'H':   parse_H_cmd (p, buf);  break;
             default :
                 break;
         }
