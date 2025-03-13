@@ -87,6 +87,7 @@ card 0: AMLAUGESOUND [AML-AUGESOUND], device 3: SPDIF-dummy-alsaPORT-spdif soc:d
 
 // config mixer (mute off)
 root@server:~# amixer sset 'TDMOUT_C Mute' off
+```
 
 * Sound test (Sign-wave 1Khz)
 ```
