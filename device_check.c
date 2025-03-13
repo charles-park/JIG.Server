@@ -133,17 +133,15 @@ int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
             break;
         case eGID_LED:
             {
-                int value = 0, pin, i, adc_read;
-                for (i = 0; i < 10; i++) {
-                    adc_board_read (fd, pdata->resp_s, &adc_read, &pin);
-                    if (value < adc_read)
-                        value = adc_read;
+                int value = 0, pin;
 
-                    usleep (10000);
-                }
+                usleep (100 * 1000);
+                adc_board_read (fd, pdata->resp_s, &value, &pin);
+
                 printf ("%s : led value = %d\n", __func__, value);
                 memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
                 sprintf(pdata->resp_s, "%d", value);
+
             }
             break;
         case eGID_HEADER:
@@ -196,8 +194,20 @@ int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
                 printf ("%s : %s\n", __func__, pdata->resp_s);
             }
             break;
+        case eGID_AUDIO:
+            {
+                int value = 0, pin;
+
+                usleep (100 * 1000);
+                adc_board_read (fd, pdata->resp_s, &value, &pin);
+
+                printf ("%s : audio value = %d\n", __func__, value);
+                memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
+                sprintf(pdata->resp_s, "%d", value);
+            }
+            break;
 /* not implement */
-        case eGID_PWM: case eGID_GPIO: case eGID_AUDIO:
+        case eGID_PWM: case eGID_GPIO:
         default:
             pdata->status_i = 0;
             break;
