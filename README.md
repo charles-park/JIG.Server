@@ -5,6 +5,7 @@
 ### ODROID-C5 (2025-01-06)
 * Linux OS Image : factory-odroidc5-0307.img (odroidh server)
 * jig-c5.base.0307.img (auto login, all ubuntu package installed, lirc installed, python3 module installed, git default setting)
+* jig-c5.server-c5.img (2025.03.13 first release)
   
 ### Install package
 ```
