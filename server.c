@@ -217,7 +217,7 @@ static void *thread_ui_func (void *arg)
         ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_ALIVE],
                     onoff ? COLOR_GREEN : p->pui->bc.uint, -1);
         ui_set_sitem (p->pfb, p->pui, p->u_item[eUID_ALIVE],
-                    -1, -1, onoff ? NULL : __DATE__);
+                    -1, -1, onoff ? p->pui->b_item[0].s_dfl : __DATE__);
 
         ui_set_sitem (p->pfb, p->pui, p->u_item[eUID_IPADDR], -1, -1, p->ip_addr);
 
