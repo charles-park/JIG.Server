@@ -404,9 +404,10 @@ static void ts_event_check (server_t *p, int ui_id)
     pch = &p->ch[nch];
 
     if ((ui_id == p->u_item[eUID_MAC_L]) || (ui_id == p->u_item[eUID_MAC_R])) {
-        if ((pch->status != eSTATUS_RUN) && (pch->status != eSTATUS_ERR))
-            usblp_print_mac (pch->mac, nch);
-        return;
+        if ((pch->status == eSTATUS_RUN) || (pch->status == eSTATUS_ERR))
+            return;
+
+        usblp_print_mac (pch->mac, nch);
     }
     if (!pch->ready)    {
         printf ("%s : Device not ready. (ch = %d)\n", __func__, nch);
