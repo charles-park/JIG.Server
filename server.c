@@ -155,13 +155,21 @@ static void channel_ui_update (server_t *p)
             case eSTATUS_WAIT:
                 pch->status = eSTATUS_RUN;
                 pch->err_cnt = 0;
+                pch->ready_wait = UART_WAIT_TIME;
                 ui_update_group (p->pfb, p->pui, nch +1);
                 ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "WAIT");
                 break;
             case eSTATUS_RUN:
-                ui_set_ritem (p->pfb, p->pui, uid,
-                            onoff ? RUN_BOX_ON : RUN_BOX_OFF, -1);
-                ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "RUNNING");
+                if (!pch->ready)    pch->ready_wait--;
+                if (pch->ready_wait) {
+                    ui_set_ritem (p->pfb, p->pui, uid,
+                        onoff ? RUN_BOX_ON : RUN_BOX_OFF, -1);
+                    ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "RUNNING");
+                } else {
+                    pch->status = eSTATUS_ERR;
+                    if (p->usblp_status)
+                        usblp_print_err ("uart", "", "", nch);
+                }
                 break;
             case eSTATUS_PRINT:
                 ui_set_ritem (p->pfb, p->pui, uid,
@@ -169,6 +177,8 @@ static void channel_ui_update (server_t *p)
                 ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "FINISH");
                 break;
             case eSTATUS_ERR:
+                ui_set_ritem (p->pfb, p->pui, uid, onoff ? COLOR_RED : p->pui->bc.uint, -1);
+                ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "Err UART");
                 break;
         }
     }
@@ -247,7 +257,9 @@ static void protocol_parse (server_t *p, int nch)
     char *rx_msg = (char *)pch->rx_msg;
     char serial_resp[SERIAL_RESP_SIZE], resp [DEVICE_RESP_SIZE];
 
-    if (!device_resp_parse (rx_msg, &pitem))   return;
+    if (!device_resp_parse (rx_msg, &pitem))    return;
+
+    if (pch->status == eSTATUS_ERR)             return;
 
     switch (pitem.cmd) {
         /* Device Ready received */
@@ -258,8 +270,10 @@ static void protocol_parse (server_t *p, int nch)
 
             memset (pch->err_msg, 0, sizeof(pch->err_msg));
             pch->err_cnt = 0;
-            pch->ready   = 1;
-            pch->status  = eSTATUS_RUN;
+            if (pch->ready_wait) {
+                pch->ready = 1;
+                pch->status  = eSTATUS_RUN;
+            }
             break;
         /* Device status received */
         case 'S':
@@ -320,12 +334,19 @@ static void ts_event_check (server_t *p, int ui_id)
     if ((ui_id == p->u_item[eUID_STATUS_L]) || (ui_id == p->u_item[eUID_STATUS_R])) {
         pch = (ui_id == p->u_item[eUID_STATUS_L]) ? &p->ch[0] : &p->ch[1];
 
-        if (!pch->ready || (pch->status != eSTATUS_RUN))    return;
+        if (!pch->ready)    return;
 
-        SERIAL_RESP_FORM(serial_resp, 'X', -1, -1, NULL);
-        protocol_msg_tx (pch->puart, serial_resp);
-        protocol_msg_tx (pch->puart, "\r\n");
-        pch->err_cnt = 0;
+        if (pch->status != eSTATUS_RUN) {
+            SERIAL_RESP_FORM(serial_resp, 'E', -1, -1, NULL);
+            protocol_msg_tx (pch->puart, serial_resp);
+            protocol_msg_tx (pch->puart, "\r\n");
+            pch->err_cnt = 0;
+        } else {
+            SERIAL_RESP_FORM(serial_resp, 'X', -1, -1, NULL);
+            protocol_msg_tx (pch->puart, serial_resp);
+            protocol_msg_tx (pch->puart, "\r\n");
+            pch->err_cnt = 0;
+        }
         return;
     }
 
@@ -356,7 +377,7 @@ static void ts_event_check (server_t *p, int ui_id)
     pch = &p->ch[nch];
 
     if ((ui_id == p->u_item[eUID_MAC_L]) || (ui_id == p->u_item[eUID_MAC_R])) {
-        if (pch->status != eSTATUS_RUN)
+        if ((pch->status != eSTATUS_RUN) && (pch->status != eSTATUS_ERR))
             usblp_print_mac (pch->mac, nch);
         return;
     }

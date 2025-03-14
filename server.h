@@ -107,9 +107,13 @@ typedef struct h_item__t {
 #define USBLP_MAX_CHAR  19
 #define USBLP_ERR_LINE  20
 
+/* UART protocol wait 60s */
+#define UART_WAIT_TIME  60
+
 typedef struct channel__t {
     int         status;
     int         ready;  /* ready signal received */
+    int         ready_wait; /* uart receive wait time */
 
     int         i2c_fd;
     char        i2c_path [STR_PATH_LENGTH];
