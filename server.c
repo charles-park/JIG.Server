@@ -208,16 +208,15 @@ static void *thread_ui_func (void *arg)
 {
     static int onoff = 0;
     server_t *p = (server_t *)arg;
-    char ip_addr[20];
 
-    memset (ip_addr,    0, sizeof(ip_addr));
-    get_board_ip(ip_addr);
+    memset (p->ip_addr, 0, sizeof(p->ip_addr));
+    get_board_ip(p->ip_addr);
 
     while (1) {
         onoff = !onoff;
         ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_ALIVE],
                     onoff ? COLOR_GREEN : p->pui->bc.uint, -1);
-        ui_set_sitem (p->pfb, p->pui, p->u_item[eUID_IPADDR], -1, -1, ip_addr);
+        ui_set_sitem (p->pfb, p->pui, p->u_item[eUID_IPADDR], -1, -1, p->ip_addr);
 
         if (onoff)  ui_update (p->pfb, p->pui, -1);
 
@@ -390,6 +389,12 @@ static void ts_event_check (server_t *p, int ui_id)
     if (ui_id == p->u_item[eUID_USBLP]) {
         p->usblp_status = usblp_config ();
         return;
+    }
+
+    // request server ip
+    if (ui_id == 2) {
+        memset (p->ip_addr, 0, sizeof(p->ip_addr));
+        get_board_ip(p->ip_addr);
     }
 
     if ((nch = find_ditem_uid (p, ui_id, &pos)) == -1) return;
