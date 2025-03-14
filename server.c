@@ -128,6 +128,25 @@ static void channel_ui_update (server_t *p)
     for (nch = 0; nch < p->ch_cnt; nch ++) {
         pch = &p->ch[nch];
         uid = nch ? p->u_item[eUID_STATUS_R] : p->u_item[eUID_STATUS_L];
+
+        /* system i2c, uart error check */
+        if ((pch->i2c_fd == -1) || (pch->puart == NULL)) {
+            char err_item[STR_NAME_LENGTH];
+            int cnt = 0;
+
+            memset (err_item, 0, sizeof(err_item));
+            cnt = sprintf (err_item, "%s", "E: ");
+            if (pch->i2c_fd == -1)
+                cnt += sprintf (&err_item[cnt], "%s", "I2C ");
+            if (pch->puart == NULL)
+                cnt += sprintf (&err_item[cnt], "%s", "UART(S) ");
+
+            ui_set_ritem (p->pfb, p->pui, uid, onoff ? COLOR_RED : p->pui->bc.uint, -1);
+            ui_set_sitem (p->pfb, p->pui, uid, -1, -1, err_item);
+            pch->status = eSTATUS_ERR;
+            continue;
+        }
+
         if (channel_power_status (pch)) {
             // channel power ui
             ui_set_ritem (p->pfb, p->pui,
@@ -178,7 +197,7 @@ static void channel_ui_update (server_t *p)
                 break;
             case eSTATUS_ERR:
                 ui_set_ritem (p->pfb, p->pui, uid, onoff ? COLOR_RED : p->pui->bc.uint, -1);
-                ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "Err UART");
+                ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "E: UART(C)");
                 break;
         }
     }
@@ -216,7 +235,7 @@ static void *thread_ui_func (void *arg)
             }
             ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_USBLP],
                 p->usblp_status ? COLOR_GREEN : COLOR_DIM_GRAY, -1);
-    }
+        }
         usleep (UPDATE_UI_DELAY);
     }
     return arg;
