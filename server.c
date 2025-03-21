@@ -41,139 +41,25 @@
 #include <sys/ioctl.h>
 
 //------------------------------------------------------------------------------
-#include "lib_fbui/lib_fb.h"
-#include "lib_fbui/lib_ui.h"
-#include "lib_i2cadc/lib_i2cadc.h"
-#include "lib_usblp/lib_usblp.h"
-#include "lib_gpio/lib_gpio.h"
-
-#include "device_c4.h"
-#include "protocol.h"
+#include "server.h"
 
 //------------------------------------------------------------------------------
-//
-// JIG Protocol(V2.0)
-// https://docs.google.com/spreadsheets/d/1Of7im-2I5m_M-YKswsubrzQAXEGy-japYeH8h_754WA/edit#gid=0
-//
+// device_check.c
 //------------------------------------------------------------------------------
-
-#define SERVER_FB       "/dev/fb0"
-#define SERVER_UART     "/dev/ttyUSB1"
-
-#define SERVER_UI       "ui_c4_server.cfg"
-
-#define UART_BAUDRATE   115200
-
-/* NLP Printer Info */
-#define NLP_MAX_CHAR    19
-#define NLP_ERR_LINE    20
+extern int  device_resp_parse   (const char *resp, parse_resp_data_t *pdata);
+extern int  device_resp_check   (server_t *p, int fd, parse_resp_data_t *pdata);
 
 //------------------------------------------------------------------------------
-const char *SERVER_I2C_PATH[] = {
-    // CH-L
-    "/dev/i2c-0",
-    // CH-R
-    "/dev/i2c-1",
-};
-
-// ODROID-C4 USB PATH
-#define USB_R_DN    "/sys/devices/platform/ff500000.dwc3/xhci-hcd.0.auto/usb1/1-1/1-1.1/"
-#define USB_R_UP    "/sys/devices/platform/ff500000.dwc3/xhci-hcd.0.auto/usb1/1-1/1-1.4/"
-#define USB_L_DN    "/sys/devices/platform/ff500000.dwc3/xhci-hcd.0.auto/usb1/1-1/1-1.3/"
-#define USB_L_UP    "/sys/devices/platform/ff500000.dwc3/xhci-hcd.0.auto/usb1/1-1/1-1.2/"
-
-const char *SERVER_UART_PATH[] = {
-    // CH-L
-    USB_L_UP,
-    // CH-R
-    USB_R_UP,
-};
+static int  get_board_ip        (char *ip_addr);
+static int  channel_power_status(channel_t *pch);
+static void channel_ui_update   (server_t *p);
+static void *thread_ui_func     (void *arg);
+static int  find_ditem_uid      (server_t *p, int ui_id, int *pos);
+static int  find_ditem_pos      (server_t *p, int gid, int did);
+static void protocol_parse      (server_t *p, int nch);
+static void ts_event_check      (server_t *p, int ui_id);
 
 //------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-#define UID_ALIVE       0
-#define UID_IPADDR      4
-
-#define UID_IPADDR_L    42
-#define UID_IPADDR_R    46
-
-#define UID_IERF3_L     94
-#define UID_IERF3_R     98
-
-#define UID_CHANNEL_L   22
-#define UID_CHANNEL_R   26
-
-#define UID_STATUS_L    182
-#define UID_STATUS_R    186
-
-#define UID_MAC_L       62
-#define UID_MAC_R       66
-
-#define UID_USB_LD_L    112
-#define UID_USB_LU_L    113
-#define UID_USB_RD_L    114
-#define UID_USB_RU_L    115
-#define UID_USB_LD_R    116
-#define UID_USB_LU_R    117
-#define UID_USB_RD_R    118
-#define UID_USB_RU_R    119
-
-#define UID_USB_OTG_L   132
-#define UID_USB_OTG_R   136
-
-#define UID_eMMC_L      133
-#define UID_eMMC_R      137
-
-#define UID_LED100M_L   152
-#define UID_LED100M_R   156
-
-#define UID_LED1G_L     153
-#define UID_LED1G_R     157
-
-#define RUN_BOX_ON      RGB_TO_UINT(204, 204, 0)
-#define RUN_BOX_OFF     RGB_TO_UINT(153, 153, 0)
-
-//------------------------------------------------------------------------------
-#define MAIN_LOOP_DELAY     500
-
-#define FUNC_LOOP_DELAY     (100*1000)
-
-#define CHECK_CMD_DELAY     (500*1000)
-#define UPDATE_UI_DELAY     (500*1000)
-
-// system state
-enum { eSTATUS_STOP, eSTATUS_WAIT, eSTATUS_RUN, eSTATUS_PRINT,  eSTATUS_ERR, eSTATUS_END };
-
-typedef struct channel__t {
-    int         status;
-    int         ready;  /* ready signal received */
-
-    int         i2c_fd;
-    uart_t      *puart;
-    char        uart_path[STR_PATH_LENGTH];
-    char        rx_msg [SERIAL_RESP_SIZE +1];
-    char        tx_msg [SERIAL_RESP_SIZE +1];
-
-    // nlp mac msg
-    char        nlp_mac [DEVICE_RESP_SIZE];
-    // nlp err msg
-    char        nlp_err_msg [NLP_ERR_LINE][NLP_MAX_CHAR];
-    int         nlp_err_cnt;
-}   channel_t;
-
-typedef struct server__t {
-    // HDMI UI
-    fb_info_t   *pfb;
-    ui_grp_t    *pui;
-    ts_t        *pts;
-    channel_t   ch[2];      // channel left/right
-    int         is_usblp;   // usblp connect status
-}   server_t;
-
-
-//------------------------------------------------------------------------------
-#define DEFAULT_RUNING_TIME  30
-
 volatile int SystemCheckReady = 0, RunningTime = DEFAULT_RUNING_TIME;
 volatile int UIStatus = eSTATUS_WAIT;
 
@@ -182,103 +68,6 @@ pthread_t thread_ui;
 pthread_t thread_check;
 
 //------------------------------------------------------------------------------
-struct ui_item {
-    int gid, did, uid_l, uid_r, is_str;
-};
-
-const struct ui_item uitem[] = {
-    // USB F/W C4
-    { 12, 0, 92, 96, 1 },
-
-    // ETHERNET, IP (Board ID)
-    {  5, 0, 42, 46, 1 },
-    // ETHERNET, MAC
-    {  5, 1, 62, 66, 1 },
-    // ETHERNET, IPERF
-    {  5, 2, 94, 98, 1 },
-
-    // SYSTEM, MEM
-    {  0, 0,124,128, 0 },
-    // SYSTEM, FB
-    {  0, 3,142,146, 0 },
-
-    // HDMI, EDID
-    {  3, 0,143,147, 0 },
-    // HDMI, HPD
-    {  3, 1,144,148, 0 },
-
-    // ADC, ADC37
-    {  4, 0,134,138, 0 },
-    // ADC, ADC40
-    {  4, 1,135,139, 0 },
-
-    // eMMC Speed
-    {  1, 0,133,137, 1 },
-
-    // IR
-    { 10, 0,125,129, 0 },
-
-    // USB OTG Read (2.0)
-    {  2, 0,132,136, 1 },
-    // USB 3.0 Read (3.0) L/D
-    {  2, 1,112,116, 1 },
-    // USB 3.0 Read (3.0) L/U
-    {  2, 2,113,117, 1 },
-    // USB 3.0 Read (3.0) R/D
-    {  2, 3,114,118, 1 },
-    // USB 3.0 Read (3.0) R/U
-    {  2, 4,115,119, 1 },
-
-    // HEADER_40, PT0
-    {  6, 0,162,166, 0 },
-    // HEADER_40, PT1
-    {  6,10,163,167, 0 },
-    // HEADER_40, PT2
-    {  6,20,164,168, 0 },
-    // HEADER_40, PT3
-    {  6,30,165,169, 0 },
-
-    // HEADER_7, PT0
-    {  6, 1,172,176, 0 },
-    // HEADER_7, PT1
-    {  6,11,173,177, 0 },
-    // HEADER_7, PT2
-    {  6,21,174,178, 0 },
-    // HEADER_7, PT3
-    {  6,31,175,179, 0 },
-
-    // LED, POWER
-    {  8,10,145,149, 0 },
-    // LED, ALIVE_ON
-    {  8,11,154,158, 0 },
-    // LED, ALIVE_OFF
-    {  8, 1,155,159, 0 },
-    // LED, LINK_100M
-    {  8,12,152,156, 0 },
-    // LED, LINK_1G
-    {  8,13,153,157, 0 },
-};
-
-//------------------------------------------------------------------------------
-// 문자열 변경 함수. 입력 포인터는 반드시 메모리가 할당되어진 변수여야 함.
-//------------------------------------------------------------------------------
-static void tolowerstr (char *p)
-{
-    int i, c = strlen(p);
-
-    for (i = 0; i < c; i++, p++)
-        *p = tolower(*p);
-}
-
-//------------------------------------------------------------------------------
-static void toupperstr (char *p)
-{
-    int i, c = strlen(p);
-
-    for (i = 0; i < c; i++, p++)
-        *p = toupper(*p);
-}
-
 //------------------------------------------------------------------------------
 static int get_board_ip (char *ip_addr)
 {
@@ -309,45 +98,26 @@ retry:
 }
 
 //------------------------------------------------------------------------------
-#define CHECK_POWER_3V      3000
-#define CHECK_POWER_5V      4900
-
 static int channel_power_status (channel_t *pch)
 {
-    int pin, check_3v, check_5v, retry = 2;
+    int pin, i, retry = 2;
 
 retry:
-    pthread_mutex_lock   (&mutex);
-    adc_board_read (pch->i2c_fd, "con1.1", &check_3v, &pin);
-    adc_board_read (pch->i2c_fd, "con1.2", &check_5v, &pin);
-    pthread_mutex_unlock (&mutex);
+    for (i = 0; i < pch->pw_item_cnt; i++) {
+        pthread_mutex_lock   (&mutex);
+        adc_board_read (pch->i2c_fd,
+            pch->pw_item[i].cname, &pch->pw_item[i].read_mV, &pin);
+        pthread_mutex_unlock (&mutex);
+        if (pch->pw_item[i].read_mV < pch->pw_item[i].check_mV)   {
+            if (retry--) { usleep (FUNC_LOOP_DELAY);   goto retry;  }
 
-    if ((check_3v > CHECK_POWER_3V) && (check_5v > CHECK_POWER_5V)) {
-        if (retry--) { usleep (FUNC_LOOP_DELAY);   goto retry;  }
-        return 1;
+            pch->ready = 0;
+            return 0;
+        }
     }
-    pch->ready = 0;
-    return 0;
+    return 1;
 }
 //------------------------------------------------------------------------------
-static int find_ts_event (void);
-static void ts_reinit (server_t *p)
-{
-    // find ts event...
-    int event_no;
-    char ts_event[STR_PATH_LENGTH];
-
-    if (p->pts) ts_deinit (p->pts);
-
-    event_no = find_ts_event();
-    if (event_no != -1) {
-        memset  (ts_event, 0, sizeof(ts_event));
-        sprintf (ts_event, "/dev/input/event%d", event_no);
-        p->pts = ts_init (ts_event);
-        printf ("%s : ts_event path = %s\n", __func__, ts_event);
-    }
-}
-
 static void channel_ui_update (server_t *p)
 {
     channel_t *pch;
@@ -355,20 +125,42 @@ static void channel_ui_update (server_t *p)
     static int onoff = 0;
 
     onoff = !onoff;
-    for (nch = 0; nch < 2; nch ++) {
+    for (nch = 0; nch < p->ch_cnt; nch ++) {
         pch = &p->ch[nch];
-        uid = nch ? UID_STATUS_R : UID_STATUS_L;
+        uid = nch ? p->u_item[eUID_STATUS_R] : p->u_item[eUID_STATUS_L];
+
+        /* system i2c, uart error check */
+        if ((pch->i2c_fd == -1) || (pch->puart == NULL)) {
+            char err_item[STR_NAME_LENGTH];
+            int cnt = 0;
+
+            memset (err_item, 0, sizeof(err_item));
+            cnt = sprintf (err_item, "%s", "E: ");
+            if (pch->i2c_fd == -1)
+                cnt += sprintf (&err_item[cnt], "%s", "I2C ");
+            if (pch->puart == NULL)
+                cnt += sprintf (&err_item[cnt], "%s", "UART(S) ");
+
+            ui_set_ritem (p->pfb, p->pui, uid, onoff ? COLOR_RED : p->pui->bc.uint, -1);
+            ui_set_sitem (p->pfb, p->pui, uid, -1, -1, err_item);
+            pch->status = eSTATUS_ERR;
+            continue;
+        }
+
         if (channel_power_status (pch)) {
             // channel power ui
-            ui_set_ritem (p->pfb, p->pui, nch ? UID_CHANNEL_R : UID_CHANNEL_L,
-                        COLOR_GREEN, -1);
+            ui_set_ritem (p->pfb, p->pui,
+                nch ? p->u_item[eUID_CH_R] : p->u_item[eUID_CH_L],
+                COLOR_GREEN, -1);
             if (pch->status == eSTATUS_STOP)
                 pch->status = eSTATUS_WAIT;
         }
         else {
             // channel power ui
-            ui_set_ritem (p->pfb, p->pui, nch ? UID_CHANNEL_R : UID_CHANNEL_L,
-                        COLOR_DIM_GRAY, -1);
+            ui_set_ritem (p->pfb, p->pui,
+                nch ? p->u_item[eUID_CH_R] : p->u_item[eUID_CH_L],
+                COLOR_DIM_GRAY, -1);
+
             if (pch->status != eSTATUS_STOP) {
                 ui_set_ritem (p->pfb, p->pui, uid, p->pui->bc.uint, -1);
                 ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "WAIT");
@@ -381,185 +173,102 @@ static void channel_ui_update (server_t *p)
                 break;
             case eSTATUS_WAIT:
                 pch->status = eSTATUS_RUN;
-                pch->nlp_err_cnt = 0;
+                pch->err_cnt = 0;
+                pch->ready_wait = UART_WAIT_TIME;
                 ui_update_group (p->pfb, p->pui, nch +1);
                 ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "WAIT");
                 break;
             case eSTATUS_RUN:
-                ui_set_ritem (p->pfb, p->pui, uid,
-                            onoff ? RUN_BOX_ON : RUN_BOX_OFF, -1);
-                ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "RUNNING");
+                if (!pch->ready)    pch->ready_wait--;
+                if (pch->ready_wait) {
+                    ui_set_ritem (p->pfb, p->pui, uid,
+                        onoff ? RUN_BOX_ON : RUN_BOX_OFF, -1);
+                    ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "RUNNING");
+                } else {
+                    pch->status = eSTATUS_ERR;
+                    if (p->usblp_status)
+                        usblp_print_err ("uart", "", "", nch);
+                }
                 break;
             case eSTATUS_PRINT:
-
                 ui_set_ritem (p->pfb, p->pui, uid,
-                            pch->nlp_err_cnt ? COLOR_RED : COLOR_GREEN, -1);
+                            pch->err_cnt ? COLOR_RED : COLOR_GREEN, -1);
                 ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "FINISH");
                 break;
             case eSTATUS_ERR:
+                ui_set_ritem (p->pfb, p->pui, uid, onoff ? COLOR_RED : p->pui->bc.uint, -1);
+                ui_set_sitem (p->pfb, p->pui, uid, -1, -1, "E: UART(C)");
                 break;
         }
     }
 }
 
 //------------------------------------------------------------------------------
-#define BUTTON_TS_RESET     482 // Header40 7 Pin
-
-static void *thread_ui_func (void *pserver)
+static void *thread_ui_func (void *arg)
 {
     static int onoff = 0;
-    server_t *p = (server_t *)pserver;
-    char ip_addr[20];
+    server_t *p = (server_t *)arg;
 
-    memset (ip_addr,    0, sizeof(ip_addr));
-    get_board_ip(ip_addr);
+    memset (p->ip_addr, 0, sizeof(p->ip_addr));
+    get_board_ip(p->ip_addr);
 
     while (1) {
         onoff = !onoff;
-        ui_set_ritem (p->pfb, p->pui, UID_ALIVE,
+        ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_ALIVE],
                     onoff ? COLOR_GREEN : p->pui->bc.uint, -1);
-        ui_set_sitem (p->pfb, p->pui, UID_IPADDR, -1, -1, ip_addr);
+        ui_set_sitem (p->pfb, p->pui, p->u_item[eUID_ALIVE],
+                    -1, -1, onoff ? p->pui->b_item[0].s_dfl : __DATE__);
+
+        ui_set_sitem (p->pfb, p->pui, p->u_item[eUID_IPADDR], -1, -1, p->ip_addr);
 
         if (onoff)  ui_update (p->pfb, p->pui, -1);
 
         channel_ui_update (p);
         {
-            int bt_status = 0;
-            if (gpio_get_value(BUTTON_TS_RESET, &bt_status))
-            if (bt_status)  {
-                ui_set_ritem (p->pfb, p->pui, UID_ALIVE,
-                            onoff ? COLOR_PINK : p->pui->bc.uint, -1);
+            if (p->ts_reset_gpio != -1) {
+                int bt_status = 0;
+                if (gpio_get_value(p->ts_reset_gpio, &bt_status))
+                if (bt_status == p->ts_reset_level)  {
+                    ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_ALIVE],
+                                onoff ? COLOR_PINK : p->pui->bc.uint, -1);
 
-                ts_reinit (p);
+                    ts_reinit (p);
+                }
             }
+            ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_USBLP],
+                p->usblp_status ? COLOR_GREEN : COLOR_DIM_GRAY, -1);
         }
         usleep (UPDATE_UI_DELAY);
     }
-    return pserver;
+    return arg;
 }
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
-static int find_uart_port (const char *path)
+static int find_ditem_uid (server_t *p, int ui_id, int *pos)
 {
-    FILE *fp;
-    char rdata[256], *ptr;
-
-    memset  (rdata, 0x00, sizeof(rdata));
-    sprintf (rdata, "find %s -name ttyUSB* 2<&1", path);
-
-    // UART (ttyUSB) find...
-    if ((fp = popen(rdata, "r")) != NULL) {
-        memset (rdata, 0x00, sizeof(rdata));
-        while (fgets (rdata, sizeof(rdata), fp) != NULL) {
-
-            if ((ptr = strstr (rdata, "ttyUSB")) != NULL) {
-                char c_port = *(ptr +6);
-                pclose(fp);
-                return (c_port - '0');
-            }
-            memset (rdata, 0x00, sizeof(rdata));
-        }
-        pclose(fp);
+    int i = 0;
+    for (i = 0; i < p->d_item_cnt; i++) {
+        *pos = i;
+        if (p->d_item[i].uid_l == ui_id)    return 0;
+        if (p->d_item[i].uid_r == ui_id)    return 1;
     }
     return -1;
 }
 
 //------------------------------------------------------------------------------
-static int channel_setup (channel_t *pch, int nch)
-{
-    // i2c init
-    pch->i2c_fd = adc_board_init (SERVER_I2C_PATH[nch]);
-
-    // find uart & protocol init
-    sprintf (pch->uart_path, "/dev/ttyUSB%d", find_uart_port(SERVER_UART_PATH[nch]));
-
-    if ((pch->puart = uart_init (pch->uart_path, UART_BAUDRATE)) != NULL) {
-        if (ptc_grp_init (pch->puart, 1)) {
-            if (!ptc_func_init (pch->puart, 0, SERIAL_RESP_SIZE, protocol_check, protocol_catch)) {
-                printf ("%s : protocol install error.", __func__);
-                exit(1);
-            }
-        }
-        return 1;
-    }
-    pch->status = eSTATUS_ERR;
-    printf ("%s : Error... Protocol not installed!\n", __func__);
-    return 0;
-}
-
-//------------------------------------------------------------------------------
-static int find_ts_event (void)
-{
-    FILE *fp;
-    char cmd  [STR_PATH_LENGTH];
-    int i = 0;
-
-    /*
-        find /dev/input -name event*        udevadm info -a -n /dev/input/event3 | grep 0705
-    */
-    while (1) {
-        memset  (cmd, 0, sizeof(cmd));
-        sprintf (cmd, "/dev/input/event%d", i);
-        if (access  (cmd, F_OK))    return -1;
-
-        memset  (cmd, 0, sizeof(cmd));
-        sprintf (cmd, "udevadm info -a -n /dev/input/event%d | grep 0705", i);
-        if ((fp = popen(cmd, "r")) != NULL) {
-            memset (cmd, 0x00, sizeof(cmd));
-            while (fgets (cmd, sizeof(cmd), fp) != NULL) {
-                if (strstr (cmd, "0705") != NULL) {
-                    return i;
-                    pclose (fp);
-                }
-            }
-        }
-        i++;
-    }
-}
-
-//------------------------------------------------------------------------------
-static int server_setup (server_t *p)
-{
-    if ((p->pfb = fb_init (SERVER_FB)) == NULL)         exit(1);
-    if ((p->pui = ui_init (p->pfb, SERVER_UI)) == NULL) exit(1);
-
-    // find ts event...
-    {
-        int event_no = find_ts_event();
-        char ts_event[STR_PATH_LENGTH];
-
-        if (event_no != -1) {
-            memset  (ts_event, 0, sizeof(ts_event));
-            sprintf (ts_event, "/dev/input/event%d", event_no);
-            p->pts = ts_init (ts_event);
-            printf ("%s : ts_event path = %s\n", __func__, ts_event);
-        }
-        gpio_export (BUTTON_TS_RESET);
-        gpio_direction (BUTTON_TS_RESET, 0);
-    }
-    // usb label printer setting
-    p->is_usblp = usblp_config ();
-
-    // left, right channel init
-    channel_setup (&p->ch[0], 0);    channel_setup (&p->ch[1], 1);
-
-    return 1;
-}
-
-//------------------------------------------------------------------------------
-static int find_uitem_pos (int gid, int did)
+static int find_ditem_pos (server_t *p, int gid, int did)
 {
     int i;
 
-    for (i = 0; i < sizeof(uitem)/sizeof(uitem[0]); i++) {
-        if ((uitem[i].gid == gid) && (uitem[i].did == did))
+    for (i = 0; i < p->d_item_cnt; i++) {
+        if ((p->d_item[i].gid == gid) && (p->d_item[i].did == did))
             return i;
     }
-
     return 0;
 }
 
+//------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 static void protocol_parse (server_t *p, int nch)
 {
@@ -569,7 +278,9 @@ static void protocol_parse (server_t *p, int nch)
     char *rx_msg = (char *)pch->rx_msg;
     char serial_resp[SERIAL_RESP_SIZE], resp [DEVICE_RESP_SIZE];
 
-    if (!device_resp_parse (rx_msg, &pitem))   return;
+    if (!device_resp_parse (rx_msg, &pitem))    return;
+
+    if (pch->status == eSTATUS_ERR)             return;
 
     switch (pitem.cmd) {
         /* Device Ready received */
@@ -578,18 +289,20 @@ static void protocol_parse (server_t *p, int nch)
             SERIAL_RESP_FORM(serial_resp, 'O', -1, -1, NULL);
             ui_update_group (p->pfb, p->pui, nch +1);
 
-            memset (pch->nlp_err_msg, 0, sizeof(pch->nlp_err_msg));
-            pch->nlp_err_cnt = 0;
-            pch->ready  = 1;
-            pch->status = eSTATUS_RUN;
+            memset (pch->err_msg, 0, sizeof(pch->err_msg));
+            pch->err_cnt = 0;
+            if (pch->ready_wait) {
+                pch->ready = 1;
+                pch->status  = eSTATUS_RUN;
+            }
             break;
         /* Device status received */
         case 'S':
             {
-                int pos = find_uitem_pos (pitem.gid, pitem.did);
-                int uid = nch ? uitem[pos].uid_r : uitem[pos].uid_l;
+                int pos = find_ditem_pos (p, pitem.gid, pitem.did);
+                int uid = nch ? p->d_item[pos].uid_r : p->d_item[pos].uid_l;
 
-                if (uitem[pos].is_str)
+                if (p->d_item[pos].is_str)
                     ui_set_sitem (p->pfb, p->pui, uid, -1, -1, pitem.resp_s);
 
                 if (pitem.status_c != 'C') {
@@ -599,7 +312,7 @@ static void protocol_parse (server_t *p, int nch)
                     ui_set_ritem (p->pfb, p->pui, uid, COLOR_YELLOW, -1);
 
                     pthread_mutex_lock   (&mutex);
-                    device_resp_check (pch->i2c_fd, &pitem);
+                    device_resp_check (p, pch->i2c_fd, &pitem);
                     pthread_mutex_unlock (&mutex);
                 }
             }
@@ -608,16 +321,16 @@ static void protocol_parse (server_t *p, int nch)
                                             pitem.gid, pitem.did, resp);
             break;
         case 'M':   // mac print
-            memset  (pch->nlp_mac, 0, DEVICE_RESP_SIZE);
-            strncpy (pch->nlp_mac, pitem.resp_s, strlen(pitem.resp_s));
-            printf ("%s : MAC Addr = %s\n", __func__, pch->nlp_mac);
-            if (p->is_usblp && (pch->status == eSTATUS_RUN))
-                usblp_print_mac (pch->nlp_mac, nch);
+            memset  (pch->mac, 0, DEVICE_RESP_SIZE);
+            strncpy (pch->mac, pitem.resp_s, strlen(pitem.resp_s));
+            printf ("%s : MAC Addr = %s\n", __func__, pch->mac);
+            if (p->usblp_status && (pch->status == eSTATUS_RUN))
+                usblp_print_mac (pch->mac, nch);
             return;
         case 'E':   // error msg
-            memset  (&pch->nlp_err_msg [pch->nlp_err_cnt][0], 0, NLP_MAX_CHAR);
-            strncpy (&pch->nlp_err_msg [pch->nlp_err_cnt][0], pitem.resp_s, strlen(pitem.resp_s));
-            pch->nlp_err_cnt++;
+            memset  (&pch->err_msg [pch->err_cnt][0], 0, USBLP_MAX_CHAR);
+            strncpy (&pch->err_msg [pch->err_cnt][0], pitem.resp_s, strlen(pitem.resp_s));
+            pch->err_cnt++;
             printf ("%s : Err Msg(%i) = %s\n", __func__,  pitem.status_i, pitem.resp_s);
             return;
         case 'X':   // Device test complete
@@ -631,79 +344,152 @@ static void protocol_parse (server_t *p, int nch)
 }
 
 //------------------------------------------------------------------------------
-static int find_uitem_uid (int ui_id, int *pos)
-{
-    int i;
-    for (i = 0; i < sizeof(uitem)/sizeof(uitem[0]); i++) {
-        *pos = i;
-        if (uitem[*pos].uid_l == ui_id)    return 0;
-        if (uitem[*pos].uid_r == ui_id)    return 1;
-    }
-    return -1;
-}
-
-//------------------------------------------------------------------------------
-void ts_event_check (server_t *p, int ui_id)
+static void ts_event_check (server_t *p, int ui_id)
 {
     char serial_resp [SERIAL_RESP_SIZE];
     int pos, nch;
     channel_t *pch;
 
     memset (serial_resp, 0, sizeof(serial_resp));
-    switch(ui_id) {
-        case UID_STATUS_L : case UID_STATUS_R :
-            pch = (ui_id == UID_STATUS_L) ? &p->ch[0] : &p->ch[1];
-            if (!pch->ready)    return;
 
+    if ((ui_id == p->u_item[eUID_STATUS_L]) || (ui_id == p->u_item[eUID_STATUS_R])) {
+        pch = (ui_id == p->u_item[eUID_STATUS_L]) ? &p->ch[0] : &p->ch[1];
+
+        if (!pch->ready)    return;
+
+        if (pch->status != eSTATUS_RUN) {
             SERIAL_RESP_FORM(serial_resp, 'E', -1, -1, NULL);
-            pch->nlp_err_cnt = 0;
-            break;
-
-        case UID_CHANNEL_L: case UID_CHANNEL_R:
-            pch = (ui_id == UID_CHANNEL_L) ? &p->ch[0] : &p->ch[1];
-            if (pch->status != eSTATUS_RUN) {
-                if (pch->nlp_err_cnt) {
-                    int i;
-                    for (i = 0; i < pch->nlp_err_cnt; i += 3)
-                        usblp_print_err (&pch->nlp_err_msg[0][0],
-                                         &pch->nlp_err_msg[1][0],
-                                         &pch->nlp_err_msg[2][0],
-                                        (ui_id == UID_CHANNEL_L) ? 0 : 1);
-                    // Print Err msg L/R
-                    printf ("%s : error msg printing... (ch = %d)\n",
-                        __func__, (ui_id == UID_CHANNEL_L) ? 0 : 1);
-                }
-            }
-            return;
-        default :
-            if ((nch = find_uitem_uid (ui_id, &pos)) == -1) return;
-            pch = &p->ch[nch];
-
-            if ((ui_id == UID_MAC_L) || (ui_id == UID_MAC_R)) {
-                if (pch->status != eSTATUS_RUN)
-                    usblp_print_mac (pch->nlp_mac, nch);
-            }
-            if (!pch->ready)    {
-                printf ("%s : Device not ready. (ch = %d)\n", __func__, nch);
-                return;
-            }
-            SERIAL_RESP_FORM(serial_resp, 'R', uitem[pos].gid, uitem[pos].did, NULL);
-            break;
+            protocol_msg_tx (pch->puart, serial_resp);
+            protocol_msg_tx (pch->puart, "\r\n");
+            pch->err_cnt = 0;
+        } else {
+            SERIAL_RESP_FORM(serial_resp, 'X', -1, -1, NULL);
+            protocol_msg_tx (pch->puart, serial_resp);
+            protocol_msg_tx (pch->puart, "\r\n");
+            pch->err_cnt = 0;
+        }
+        return;
     }
+
+    if ((ui_id == p->u_item[eUID_CH_L]) || (ui_id == p->u_item[eUID_CH_R])) {
+        pch = (ui_id == p->u_item[eUID_CH_L]) ? &p->ch[0] : &p->ch[1];
+        if (pch->status != eSTATUS_RUN) {
+            if (pch->err_cnt) {
+                int i;
+                for (i = 0; i < pch->err_cnt; i += 3)
+                    usblp_print_err (&pch->err_msg[i + 0][0],
+                                     &pch->err_msg[i + 1][0],
+                                     &pch->err_msg[i + 2][0],
+                                    (ui_id == p->u_item[eUID_CH_L]) ? 0 : 1);
+                // Print Err msg L/R
+                printf ("%s : error msg printing... (ch = %d)\n",
+                    __func__, (ui_id == p->u_item[eUID_CH_L]) ? 0 : 1);
+            }
+        }
+        return;
+    }
+    // printer reinit
+    if (ui_id == p->u_item[eUID_USBLP]) {
+        p->usblp_status = usblp_config ();
+        return;
+    }
+
+    // request server ip
+    if (ui_id == 2) {
+        memset (p->ip_addr, 0, sizeof(p->ip_addr));
+        get_board_ip(p->ip_addr);
+    }
+
+    if ((nch = find_ditem_uid (p, ui_id, &pos)) == -1) return;
+    pch = &p->ch[nch];
+
+    if ((ui_id == p->u_item[eUID_MAC_L]) || (ui_id == p->u_item[eUID_MAC_R])) {
+        if ((pch->status == eSTATUS_RUN) || (pch->status == eSTATUS_ERR))
+            return;
+
+        usblp_print_mac (pch->mac, nch);
+    }
+    if (!pch->ready)    {
+        printf ("%s : Device not ready. (ch = %d)\n", __func__, nch);
+        return;
+    }
+    SERIAL_RESP_FORM(serial_resp, 'R', p->d_item[pos].gid, p->d_item[pos].did, NULL);
     protocol_msg_tx (pch->puart, serial_resp);
     protocol_msg_tx (pch->puart, "\r\n");
 }
 
 //------------------------------------------------------------------------------
-int main (void)
+static char *OPT_CFG_FNAME = SERVER_CFG;
+static int OPT_SW_VALUE = 0; /* 0 : default config, 1 : force odroid-c4 mode */
+
+static void print_usage (const char *prog)
+{
+    puts("");
+    printf("Usage: %s [-c:server config file]\n", prog);
+    puts("\n"
+        "  e.g) -c {server cfg filename} : default {server.cfg}\n"
+        "\n"
+    );
+    exit(1);
+}
+
+//------------------------------------------------------------------------------
+static void parse_opts (int argc, char *argv[])
+{
+    while (1) {
+        static const struct option lopts[] = {
+            { "config"   ,  1, 0, 'c' },
+            { "gpio num" ,  1, 0, 'g' },
+            { NULL, 0, 0, 0 },
+        };
+        int c;
+
+        c = getopt_long(argc, argv, "c:g:", lopts, NULL);
+
+        if (c == -1)
+            break;
+
+        switch (c) {
+        case 'c':
+            OPT_CFG_FNAME = optarg;
+            break;
+        case 'g':
+            {
+                int gpio_num = -1, value = 0;
+                gpio_num = atoi(optarg);
+                if (gpio_export (gpio_num)) {
+                    if (gpio_direction (gpio_num, 0)) {
+                        if (gpio_get_value (gpio_num, &value))
+                            OPT_SW_VALUE = (value == 0) ? 1 :0;
+                        else
+                            OPT_SW_VALUE = 0;
+
+                        printf ("%s : gpio = %d, value = %d\n", __func__, gpio_num, value);
+                    }
+                }
+            };
+            break;
+        case 'h':
+        default:
+            print_usage(argv[0]);
+            break;
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
+int main (int argc, char *argv[])
 {
     int nch;
     server_t server;
 
     memset (&server, 0, sizeof(server));
 
-    // UI, UART
-    server_setup (&server);
+    // option check
+    parse_opts(argc, argv);
+
+    // UI, UART (sw value 1 = server.c4.cfg, sw value 0 = OPT_CFG_FNAME)
+    server_setup (&server, OPT_SW_VALUE ? "server.c4.cfg" : OPT_CFG_FNAME);
 
     pthread_create (&thread_ui,    NULL, thread_ui_func,    (void *)&server);
 
@@ -721,7 +507,7 @@ int main (void)
     }
 
     while (1) {
-        for (nch = 0; nch < 2; nch ++) {
+        for (nch = 0; nch < server.ch_cnt; nch ++) {
             if (protocol_msg_rx (server.ch[nch].puart, server.ch[nch].rx_msg))
                 protocol_parse  (&server, nch);
         }

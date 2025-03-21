@@ -6,4 +6,4 @@
 #--------------------------
 # ODROID-C4 Server enable
 #--------------------------
-/usr/bin/sync && /root/JIG.Server/JIG.Server > /dev/null 2>&1
+/usr/bin/sync && /root/JIG.Server/JIG.Server -g 479 > /dev/null 2>&1
