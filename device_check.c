@@ -138,6 +138,9 @@ int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
                 usleep (100 * 1000);
                 adc_board_read (fd, pdata->resp_s, &value, &pin);
 
+                if (JigModel) {
+                    if(!DEVICE_ACTION(pdata->did) && (value < 400)) value = 50;
+                }
                 printf ("%s : led value = %d\n", __func__, value);
                 memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
                 sprintf(pdata->resp_s, "%d", value);

@@ -87,11 +87,11 @@ static int find_ts_event (const char *f_str)
         if (access  (cmd, F_OK))    return -1;
 
         memset  (cmd, 0, sizeof(cmd));
-        sprintf (cmd, "udevadm info -a -n /dev/input/event%d | grep %s", i, f_str);
+        sprintf (cmd, "udevadm info -a -n /dev/input/event%d | grep %s", i, JigModel ? "16b4" : f_str);
         if ((fp = popen(cmd, "r")) != NULL) {
             memset (cmd, 0x00, sizeof(cmd));
             while (fgets (cmd, sizeof(cmd), fp) != NULL) {
-                if (strstr (cmd, f_str) != NULL) {
+                if (strstr (cmd, JigModel ? "16b4" : f_str) != NULL) {
                     pclose (fp);
                     return i;
                 }
