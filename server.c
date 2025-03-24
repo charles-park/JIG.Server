@@ -489,6 +489,7 @@ static int get_jig_model (void)
         if (fgets (cmd, STR_PATH_LENGTH, fp)) {
             fclose (fp);
 
+            if (strstr (cmd, "1920") == NULL)   system ("reboot");
             // C4 JIG return 1, C5 JIG return 0
             return  (strstr (cmd, "2160") != NULL) ? 1 : 0;
         }
