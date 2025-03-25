@@ -135,19 +135,16 @@ int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
             {
                 int value = 0, pin, i = 0;
 
-                for (i = 0; i < 10; i++) {
-                    usleep (100 * 1000);
+                for (i = 0; i < 400; i++) {
+                    usleep (5 * 1000);
                     adc_board_read (fd, pdata->resp_s, &value, &pin);
 
-                    if(!DEVICE_ACTION(pdata->did) && (value < 400)) value = 50;
-                    if( DEVICE_ACTION(pdata->did) && (value > 400)) value = 1000;
-
-                    if ((value > 900) || (value < 400)) break;
+                    if(!DEVICE_ACTION(pdata->did) && (value < 400)) { value = 50;     break; }
+                    if( DEVICE_ACTION(pdata->did) && (value > 400)) { value = 1000;   break; }
                 }
                 printf ("%s : count = %d, led value = %d\n", __func__, i, value);
                 memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
                 sprintf(pdata->resp_s, "%d", value);
-
             }
             break;
         case eGID_HEADER:
