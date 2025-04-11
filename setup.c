@@ -139,10 +139,16 @@ static void parse_S_cmd (server_t *p, char *cfg)
             strncpy (p->fb_path, tok, strlen(tok));
 
         if ((tok = strtok (NULL, ",")) != NULL)
+            p->fb_rotate = atoi (tok);
+
+        if ((tok = strtok (NULL, ",")) != NULL)
             p->ch_cnt = atoi (tok);
 
         if ((tok = strtok (NULL, ",")) != NULL)
             p->usblp_mode = atoi (tok);
+
+        if ((tok = strtok (NULL, ",")) != NULL)
+            find_file_path (tok, p->ui_path);
     }
 }
 
@@ -326,7 +332,7 @@ static int channel_setup (channel_t *pch)
         }
         return 1;
     }
-    pch->status = eSTATUS_ERR;
+    pch->puart = NULL;  pch->status = eSTATUS_ERR;
     printf ("%s : Error... Protocol not installed!\n", __func__);
     return 0;
 }
@@ -526,6 +532,8 @@ static int server_setup (server_t *p)
 {
     if (server_config (p, p->j_name)) {
         if ((p->pfb = fb_init (p->fb_path)) == NULL)            exit(1);
+        fb_set_rotate (p->pfb, p->fb_rotate);
+
         if ((p->pui = ui_init (p->pfb, p->ui_path)) == NULL)    exit(1);
 
         // touch init

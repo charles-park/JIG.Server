@@ -165,10 +165,10 @@ typedef struct server__t {
 
     // Frame buffer (HDMI or LCD)
     char        fb_path[STR_PATH_LENGTH];
+    int         fb_rotate;
     fb_info_t   *pfb;
 
     // UI Control file
-    char        ui_name[STR_NAME_LENGTH];
     char        ui_path[STR_PATH_LENGTH];
     ui_grp_t    *pui;
 
