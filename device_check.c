@@ -115,7 +115,7 @@ int device_resp_parse (const char *resp_msg, parse_resp_data_t *pdata)
 }
 
 //------------------------------------------------------------------------------
-int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
+int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata, int nch)
 {
     /* Device request I2C ADC Check */
     switch (pdata->gid) {
@@ -132,15 +132,32 @@ int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
             }
             break;
         case eGID_LED:
+#define LED_PASS_ON     1000
+#define LED_PASS_OFF    50
             {
-                int value = 0, pin, i = 0;
+                int value = 0, pin, i = 0, off_mV = LED_PASS_OFF, on_mV = LED_PASS_ON;
+
+                for (i = 0; i < p->ch[nch].l_item_cnt; i++) {
+                    if (p->ch[nch].l_item[i].did == DEVICE_ID(pdata->did)) {
+                        on_mV  = p->ch[nch].l_item[i].on_mV;
+                        off_mV = p->ch[nch].l_item[i].off_mV;
+                        break;
+                    }
+                }
 
                 for (i = 0; i < 400; i++) {
                     usleep (5 * 1000);
                     adc_board_read (fd, pdata->resp_s, &value, &pin);
-
-                    if(!DEVICE_ACTION(pdata->did) && (value < 400)) { value = 50;     break; }
-                    if( DEVICE_ACTION(pdata->did) && (value > 400)) { value = 1000;   break; }
+                    if(!DEVICE_ACTION(pdata->did) && (value < off_mV)) {
+                        printf ("%s : led off value = %d\n", __func__, value);
+                        value = LED_PASS_OFF;
+                        break;
+                    }
+                    if( DEVICE_ACTION(pdata->did) && (value >  on_mV)) {
+                        printf ("%s : led on value = %d\n", __func__, value);
+                        value = LED_PASS_ON;
+                        break;
+                    }
                 }
                 printf ("%s : count = %d, led value = %d\n", __func__, i, value);
                 memset (pdata->resp_s, 0, sizeof(pdata->resp_s));

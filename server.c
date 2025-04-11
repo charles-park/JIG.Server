@@ -47,11 +47,11 @@
 // device_check.c
 //------------------------------------------------------------------------------
 extern int  device_resp_parse   (const char *resp, parse_resp_data_t *pdata);
-extern int  device_resp_check   (server_t *p, int fd, parse_resp_data_t *pdata);
+extern int  device_resp_check   (server_t *p, int fd, parse_resp_data_t *pdata, int nch);
 
 //------------------------------------------------------------------------------
 static int  get_board_ip        (char *ip_addr);
-static int  channel_power_status(channel_t *pch);
+static int  channel_power_status(server_t *p, int nch);
 static void channel_ui_update   (server_t *p);
 static void *thread_ui_func     (void *arg);
 static int  find_ditem_uid      (server_t *p, int ui_id, int *pos);
@@ -98,20 +98,20 @@ retry:
 }
 
 //------------------------------------------------------------------------------
-static int channel_power_status (channel_t *pch)
+static int channel_power_status (server_t *p, int nch)
 {
     int pin, i, retry = 2;
 
 retry:
-    for (i = 0; i < pch->pw_item_cnt; i++) {
+    for (i = 0; i < p->pw_item_cnt; i++) {
         pthread_mutex_lock   (&mutex);
-        adc_board_read (pch->i2c_fd,
-            pch->pw_item[i].cname, &pch->pw_item[i].read_mV, &pin);
+        adc_board_read (p->ch[nch].i2c_fd,
+            p->pw_item[i].cname, &p->pw_item[i].read_mV, &pin);
         pthread_mutex_unlock (&mutex);
-        if (pch->pw_item[i].read_mV < pch->pw_item[i].check_mV)   {
+        if (p->pw_item[i].read_mV < p->pw_item[i].check_mV)   {
             if (retry--) { usleep (FUNC_LOOP_DELAY);   goto retry;  }
 
-            pch->ready = 0;
+            p->ch[nch].ready = 0;
             return 0;
         }
     }
@@ -147,7 +147,7 @@ static void channel_ui_update (server_t *p)
             continue;
         }
 
-        if (channel_power_status (pch)) {
+        if (channel_power_status (p, nch)) {
             // channel power ui
             ui_set_ritem (p->pfb, p->pui,
                 nch ? p->u_item[eUID_CH_R] : p->u_item[eUID_CH_L],
@@ -312,7 +312,7 @@ static void protocol_parse (server_t *p, int nch)
                     ui_set_ritem (p->pfb, p->pui, uid, COLOR_YELLOW, -1);
 
                     pthread_mutex_lock   (&mutex);
-                    device_resp_check (p, pch->i2c_fd, &pitem);
+                    device_resp_check (p, pch->i2c_fd, &pitem, nch);
                     pthread_mutex_unlock (&mutex);
                 }
             }
@@ -390,12 +390,13 @@ static void ts_event_check (server_t *p, int ui_id)
     }
     // printer reinit
     if (ui_id == p->u_item[eUID_USBLP]) {
-        p->usblp_status = usblp_config ();
+        if(p->usblp_status = usblp_config ())
+            usblp_print_err ("ODROID","USB LABEL","PIRNTER", 0);
         return;
     }
 
     // request server ip
-    if (ui_id == 2) {
+    if (ui_id == p->u_item[eUID_IPADDR]) {
         memset (p->ip_addr, 0, sizeof(p->ip_addr));
         get_board_ip(p->ip_addr);
     }
@@ -419,83 +420,44 @@ static void ts_event_check (server_t *p, int ui_id)
 }
 
 //------------------------------------------------------------------------------
-static char *OPT_CFG_FNAME = SERVER_CFG;
-static int OPT_SW_VALUE = 0; /* 0 : default config, 1 : force odroid-c4 mode */
-
 static void print_usage (const char *prog)
 {
     puts("");
-    printf("Usage: %s [-c:server config file]\n", prog);
+    printf("Usage: %s\n", prog);
     puts("\n"
-        "  e.g) -c {server cfg filename} : default {server.cfg}\n"
+        "  e.g) -c {jig-cfg filename}\n"
         "\n"
     );
     exit(1);
 }
 
 //------------------------------------------------------------------------------
+volatile char *OPT_JIG_FNAME  = NULL;
+
 static void parse_opts (int argc, char *argv[])
 {
     while (1) {
         static const struct option lopts[] = {
-            { "config"   ,  1, 0, 'c' },
-            { "gpio num" ,  1, 0, 'g' },
+            { "jig-cfg" ,  1, 0, 'c' },
             { NULL, 0, 0, 0 },
         };
         int c;
 
-        c = getopt_long(argc, argv, "c:g:", lopts, NULL);
+        c = getopt_long(argc, argv, "c:", lopts, NULL);
 
         if (c == -1)
             break;
 
         switch (c) {
-        case 'c':
-            OPT_CFG_FNAME = optarg;
-            break;
-        case 'g':
-            {
-                int gpio_num = -1, value = 0;
-                gpio_num = atoi(optarg);
-                if (gpio_export (gpio_num)) {
-                    if (gpio_direction (gpio_num, 0)) {
-                        if (gpio_get_value (gpio_num, &value))
-                            OPT_SW_VALUE = (value == 0) ? 1 :0;
-                        else
-                            OPT_SW_VALUE = 0;
-
-                        printf ("%s : gpio = %d, value = %d\n", __func__, gpio_num, value);
-                    }
-                }
-            };
-            break;
-        case 'h':
-        default:
-            print_usage(argv[0]);
-            break;
+            case 'c':
+                OPT_JIG_FNAME = optarg;
+                break;
+            case 'h':
+            default:
+                print_usage(argv[0]);
+                break;
         }
     }
-}
-
-//------------------------------------------------------------------------------
-int JigModel = 0;
-
-static int get_jig_model (void)
-{
-    FILE *fp;
-    char cmd [STR_PATH_LENGTH];
-
-    if ((fp = fopen ("/sys/class/graphics/fb0/virtual_size", "rt")) != NULL) {
-        if (fgets (cmd, STR_PATH_LENGTH, fp)) {
-            fclose (fp);
-
-            if (strstr (cmd, "1920") == NULL)   system ("reboot");
-            // C4 JIG return 1, C5 JIG return 0
-            return  (strstr (cmd, "2160") != NULL) ? 1 : 0;
-        }
-        fclose (fp);
-    }
-    return 0;
 }
 
 //------------------------------------------------------------------------------
@@ -509,11 +471,8 @@ int main (int argc, char *argv[])
     // option check
     parse_opts(argc, argv);
 
-    // Jig model (c4 or c5)
-    JigModel = get_jig_model();
-
-    // UI, UART (sw value 1 = server.c4.cfg, sw value 0 = OPT_CFG_FNAME)
-    server_setup (&server, OPT_SW_VALUE ? "server.c4.cfg" : OPT_CFG_FNAME);
+    // find jig control board & jig setup
+    board_config (&server, OPT_JIG_FNAME);
 
     pthread_create (&thread_ui,    NULL, thread_ui_func,    (void *)&server);
 

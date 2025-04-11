@@ -87,11 +87,11 @@ static int find_ts_event (const char *f_str)
         if (access  (cmd, F_OK))    return -1;
 
         memset  (cmd, 0, sizeof(cmd));
-        sprintf (cmd, "udevadm info -a -n /dev/input/event%d | grep %s", i, JigModel ? "16b4" : f_str);
+        sprintf (cmd, "udevadm info -a -n /dev/input/event%d | grep %s", i, f_str);
         if ((fp = popen(cmd, "r")) != NULL) {
             memset (cmd, 0x00, sizeof(cmd));
             while (fgets (cmd, sizeof(cmd), fp) != NULL) {
-                if (strstr (cmd, JigModel ? "16b4" : f_str) != NULL) {
+                if (strstr (cmd, f_str) != NULL) {
                     pclose (fp);
                     return i;
                 }
@@ -143,9 +143,6 @@ static void parse_S_cmd (server_t *p, char *cfg)
 
         if ((tok = strtok (NULL, ",")) != NULL)
             p->usblp_mode = atoi (tok);
-
-        if ((tok = strtok (NULL, ",")) != NULL)
-            find_file_path (tok, p->ui_path);
     }
 }
 
@@ -183,25 +180,25 @@ static void parse_U_cmd (server_t *p, char *cfg)
 }
 
 //------------------------------------------------------------------------------
+/* P(cmd), adc con name, check volt, */
+//------------------------------------------------------------------------------
 static void parse_P_cmd (server_t *p, char *cfg)
 {
     char *tok;
-    int ch = 0;
 
     if (strtok (cfg, ",") != NULL) {
         if ((tok = strtok (NULL, ",")) != NULL)
-            ch = atoi (tok);
+            strncpy (p->pw_item[p->pw_item_cnt].cname, tok, strlen(tok));
 
         if ((tok = strtok (NULL, ",")) != NULL)
-            strncpy (p->ch[ch].pw_item[p->ch[ch].pw_item_cnt].cname, tok, strlen(tok));
+            p->pw_item[p->pw_item_cnt].check_mV = atoi (tok);
 
-        if ((tok = strtok (NULL, ",")) != NULL)
-            p->ch[ch].pw_item[p->ch[ch].pw_item_cnt].check_mV = atoi (tok);
-
-        p->ch[ch].pw_item_cnt ++;
+        p->pw_item_cnt ++;
     }
 }
 
+//------------------------------------------------------------------------------
+/* H(cmd), did, pin (0 == default setup), max mV, min mV, */
 //------------------------------------------------------------------------------
 static void parse_H_cmd (server_t *p, char *cfg)
 {
@@ -225,13 +222,56 @@ static void parse_H_cmd (server_t *p, char *cfg)
 }
 
 //------------------------------------------------------------------------------
+/* L(cmd), channel (-1 = common, 0 = Left, 1 = Right). did, On mV, Off mV, */
+//------------------------------------------------------------------------------
+static void parse_L_cmd (server_t *p, char *cfg)
+{
+    char *tok;
+    int ch = 0;
+
+    if (strtok (cfg, ",") != NULL) {
+        if ((tok = strtok (NULL, ",")) != NULL) ch = atoi(tok);
+
+        if (ch != -1) {
+            if ((tok = strtok (NULL, ",")) != NULL)
+                p->ch[ch].l_item[p->ch[ch].l_item_cnt].did = atoi (tok);
+
+            if ((tok = strtok (NULL, ",")) != NULL)
+                p->ch[ch].l_item[p->ch[ch].l_item_cnt].on_mV = atoi (tok);
+
+            if ((tok = strtok (NULL, ",")) != NULL)
+                p->ch[ch].l_item[p->ch[ch].l_item_cnt].off_mV = atoi (tok);
+
+            p->ch[ch].l_item_cnt++;
+        } else {
+            if ((tok = strtok (NULL, ",")) != NULL) {
+                p->ch[0].l_item[p->ch[0].l_item_cnt].did = atoi (tok);
+                p->ch[1].l_item[p->ch[1].l_item_cnt].did = atoi (tok);
+            }
+
+            if ((tok = strtok (NULL, ",")) != NULL) {
+                p->ch[0].l_item[p->ch[0].l_item_cnt].on_mV = atoi (tok);
+                p->ch[1].l_item[p->ch[1].l_item_cnt].on_mV = atoi (tok);
+            }
+
+            if ((tok = strtok (NULL, ",")) != NULL) {
+                p->ch[0].l_item[p->ch[0].l_item_cnt].off_mV = atoi (tok);
+                p->ch[1].l_item[p->ch[1].l_item_cnt].off_mV = atoi (tok);
+            }
+
+            p->ch[0].l_item_cnt++;  p->ch[1].l_item_cnt++;
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
 static void parse_T_cmd (server_t *p, char *cfg)
 {
     char *tok;
 
     if (strtok (cfg, ",") != NULL) {
         if ((tok = strtok (NULL, ",")) != NULL)
-            strncpy (p->ts_vid, tok, strlen(tok));
+            strncpy (p->ts_str, tok, strlen(tok));
 
         if ((tok = strtok (NULL, ",")) != NULL)
             p->ts_reset_gpio = atoi (tok);
@@ -327,6 +367,7 @@ static int server_config (server_t *p, const char *cfg_fname)
             case 'T':   parse_T_cmd (p, buf);  break;
             case 'D':   parse_D_cmd (p, buf);  break;
             case 'H':   parse_H_cmd (p, buf);  break;
+            case 'L':   parse_L_cmd (p, buf);  break;
             default :
                 break;
         }
@@ -340,7 +381,7 @@ static int server_config (server_t *p, const char *cfg_fname)
 void ts_reinit (server_t *p)
 {
     // find ts event...
-    int event_no = find_ts_event(p->ts_vid);
+    int event_no = find_ts_event(p->ts_str);
     char ts_event[STR_PATH_LENGTH];
 
     if (p->pts) ts_deinit (p->pts);
@@ -361,9 +402,129 @@ void ts_reinit (server_t *p)
 }
 
 //------------------------------------------------------------------------------
-int server_setup (server_t *p, const char *cfg_fname)
+const char *get_model_cmd = "cat /proc/device-tree/model && sync";
+
+static void tolowerstr (char *p)
 {
-    if (server_config (p, cfg_fname)) {
+    int i, c = strlen(p);
+
+    for (i = 0; i < c; i++, p++)
+        *p = tolower(*p);
+}
+
+//------------------------------------------------------------------------------
+static int get_model_name (char *pname)
+{
+    FILE *fp;
+    char *ptr, cmd_line[STR_PATH_LENGTH];
+
+    if (access ("/proc/device-tree/model", F_OK) != 0)
+        return 0;
+
+    memset (cmd_line, 0, sizeof(cmd_line));
+
+    if ((fp = popen(get_model_cmd, "r")) != NULL) {
+        if (NULL != fgets (cmd_line, sizeof(cmd_line), fp)) {
+            if ((ptr = strstr (cmd_line, "ODROID-")) != NULL) {
+                strncpy (pname, ptr, strlen(ptr));
+                tolowerstr (pname);
+                pclose(fp);
+                return 1;
+            }
+        }
+        pclose(fp);
+    }
+    return 0;
+}
+
+//------------------------------------------------------------------------------
+static int option_default (server_t *p, char *cfg)
+{
+    char *tok;
+
+    if (strtok (cfg, ",") != NULL) {
+        /* jig cfg fname */
+        if ((tok = strtok (NULL, ",")) != NULL)
+            strncpy (p->j_name, tok, strlen(tok));
+
+        return 1;
+    }
+    return 0;
+}
+
+//------------------------------------------------------------------------------
+static int option_adc  (server_t *p, char *cfg)
+{   return 0;   }
+
+//------------------------------------------------------------------------------
+static int option_file (server_t *p, char *cfg)
+{   return 0;   }
+
+//------------------------------------------------------------------------------
+static int option_gpio (server_t *p, char *cfg)
+{
+    char *tok;
+    int gpio = -1, value = 0, read = -1;
+
+    // GPIO, 479, 1,jig_model1.cfg,
+    if (strtok (cfg, ",") != NULL) {
+        if ((tok  = strtok (NULL, ",")) != NULL)
+            gpio  = atoi (tok);
+        if ((tok  = strtok (NULL, ",")) != NULL)
+            value = atoi (tok);
+
+        if (gpio_export(gpio)) {
+            if (gpio_direction (gpio, 0)) {
+                if (!gpio_get_value (gpio, &read))  read = -1;
+
+                /* jig cfg fname */
+                if (value == read) {
+                    if ((tok = strtok (NULL, ",")) != NULL)
+                        strncpy (p->j_name, tok, strlen(tok));
+                }
+            }
+        }
+    }
+    return (value == read) ? 1 : 0;
+}
+
+//------------------------------------------------------------------------------
+static int parse_board_config (server_t *p, const char *b_cfg)
+{
+    FILE *pfd;
+    int check_cfg = 0, ret = 0;
+    char buf[STR_PATH_LENGTH];
+
+    memset (buf, 0, sizeof(buf));
+    if (find_file_path(b_cfg, buf)) {
+        if ((pfd = fopen(buf, "r")) == NULL) {
+            printf ("%s : %s file open error!\n", __func__, buf);
+            return 0;
+        }
+
+        memset (buf, 0, sizeof(buf));
+        while ((fgets(buf, sizeof(buf), pfd) != NULL) && !ret) {
+
+            if (buf[0] == '#' || buf[0] == '\n')  continue;
+
+            if (!check_cfg) {
+                if (strstr(buf, "ODROID-BOARD-CONFIG") != NULL)    check_cfg = 1;
+                continue;
+            }
+            if (!strncmp ("GPIO"   , buf, strlen("GPIO")))      ret = option_gpio    (p, buf);
+            if (!strncmp ("ADC"    , buf, strlen("ADC")))       ret = option_adc     (p, buf);
+            if (!strncmp ("FILE"   , buf, strlen("FILE")))      ret = option_file    (p, buf);
+            if (!strncmp ("DEFAULT", buf, strlen("DEFAULT")))   ret = option_default (p, buf);
+        }
+        fclose (pfd);
+    }
+    return ret;
+}
+
+//------------------------------------------------------------------------------
+static int server_setup (server_t *p)
+{
+    if (server_config (p, p->j_name)) {
         if ((p->pfb = fb_init (p->fb_path)) == NULL)            exit(1);
         if ((p->pui = ui_init (p->pfb, p->ui_path)) == NULL)    exit(1);
 
@@ -383,5 +544,27 @@ int server_setup (server_t *p, const char *cfg_fname)
     return 0;
 }
 
+//------------------------------------------------------------------------------
+int board_config (server_t *p, const char *j_cfg)
+{
+    if (j_cfg != NULL)  strncpy (p->j_name, j_cfg, strlen(j_cfg));
+    else {
+        /* option board cfg name */
+        if (get_model_name (p->b_name)) {
+            char f_name [STR_NAME_LENGTH*2];
+
+            memset  (f_name, 0, sizeof(f_name));
+            sprintf (f_name, "%s.cfg", p->b_name);
+
+            /* board folder (f_name = model_name.cfg)*/
+            parse_board_config (p, f_name);
+        }
+    }
+    printf ("%s : Servere setup config file = %s\n", __func__, p->j_name);
+
+    return server_setup (p);
+}
+
+//------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
