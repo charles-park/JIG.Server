@@ -238,35 +238,16 @@ static void parse_L_cmd (server_t *p, char *cfg)
     if (strtok (cfg, ",") != NULL) {
         if ((tok = strtok (NULL, ",")) != NULL) ch = atoi(tok);
 
-        if (ch != -1) {
-            if ((tok = strtok (NULL, ",")) != NULL)
-                p->ch[ch].l_item[p->ch[ch].l_item_cnt].did = atoi (tok);
+        if ((tok = strtok (NULL, ",")) != NULL)
+            p->ch[ch].l_item[p->ch[ch].l_item_cnt].did = atoi (tok);
 
-            if ((tok = strtok (NULL, ",")) != NULL)
-                p->ch[ch].l_item[p->ch[ch].l_item_cnt].on_mV = atoi (tok);
+        if ((tok = strtok (NULL, ",")) != NULL)
+            p->ch[ch].l_item[p->ch[ch].l_item_cnt].on_mV = atoi (tok);
 
-            if ((tok = strtok (NULL, ",")) != NULL)
-                p->ch[ch].l_item[p->ch[ch].l_item_cnt].off_mV = atoi (tok);
+        if ((tok = strtok (NULL, ",")) != NULL)
+            p->ch[ch].l_item[p->ch[ch].l_item_cnt].off_mV = atoi (tok);
 
-            p->ch[ch].l_item_cnt++;
-        } else {
-            if ((tok = strtok (NULL, ",")) != NULL) {
-                p->ch[0].l_item[p->ch[0].l_item_cnt].did = atoi (tok);
-                p->ch[1].l_item[p->ch[1].l_item_cnt].did = atoi (tok);
-            }
-
-            if ((tok = strtok (NULL, ",")) != NULL) {
-                p->ch[0].l_item[p->ch[0].l_item_cnt].on_mV = atoi (tok);
-                p->ch[1].l_item[p->ch[1].l_item_cnt].on_mV = atoi (tok);
-            }
-
-            if ((tok = strtok (NULL, ",")) != NULL) {
-                p->ch[0].l_item[p->ch[0].l_item_cnt].off_mV = atoi (tok);
-                p->ch[1].l_item[p->ch[1].l_item_cnt].off_mV = atoi (tok);
-            }
-
-            p->ch[0].l_item_cnt++;  p->ch[1].l_item_cnt++;
-        }
+        p->ch[ch].l_item_cnt++;
     }
 }
 
@@ -538,9 +519,6 @@ static int server_setup (server_t *p)
 
         // touch init
         ts_reinit (p);
-
-        // usb label printer setting
-        p->usblp_status = usblp_config ();
 
         // left, right channel init
         {

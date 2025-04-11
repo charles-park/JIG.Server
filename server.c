@@ -98,6 +98,30 @@ retry:
 }
 
 //------------------------------------------------------------------------------
+static int usblp_check (server_t *p)
+{
+    p->usblp_status = 0;
+    ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_USBLP],
+            p->usblp_status ? COLOR_GREEN : COLOR_DIM_GRAY, -1);
+
+        #if 0   // ui_set_popup function prototype
+        int ui_set_popup (fb_info_t *fb, ui_grp_t *ui_grp,
+            int w, int h, int lw,       /* box width, box height, box outline width */
+            int fc, int bc, int lc,     /* color : font, background, outline */
+            int fs, int ts, char *fmt, ...); /* font scale, display time(sec), msg format */
+        #endif
+        ui_set_popup (p->pfb, p->pui,
+        p->pfb->w * 80 / 100 , p->pfb->h * 30 / 100, 2,
+        COLOR_RED, COLOR_BLACK, COLOR_RED,
+        2, 20, "%s", "Find a USB Label Printer..");
+
+    if (p->usblp_status = usblp_config ())
+        usblp_print_err ("ODROID","USB LABEL","PIRNTER", 0);
+
+    p->pui->p_item.timeout = 1;
+}
+
+//------------------------------------------------------------------------------
 static int channel_power_status (server_t *p, int nch)
 {
     int pin, i, retry = 2;
@@ -390,8 +414,7 @@ static void ts_event_check (server_t *p, int ui_id)
     }
     // printer reinit
     if (ui_id == p->u_item[eUID_USBLP]) {
-        if(p->usblp_status = usblp_config ())
-            usblp_print_err ("ODROID","USB LABEL","PIRNTER", 0);
+        usblp_check(p);
         return;
     }
 
@@ -473,6 +496,9 @@ int main (int argc, char *argv[])
 
     // find jig control board & jig setup
     board_config (&server, OPT_JIG_FNAME);
+
+    // usb label printer setting
+    usblp_check (&server);
 
     pthread_create (&thread_ui,    NULL, thread_ui_func,    (void *)&server);
 
