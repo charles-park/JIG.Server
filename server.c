@@ -101,6 +101,8 @@ retry:
 static int usblp_check (server_t *p)
 {
     p->usblp_status = 0;
+
+    ui_update (p->pfb, p->pui, -1);
     ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_USBLP],
             p->usblp_status ? COLOR_GREEN : COLOR_DIM_GRAY, -1);
 
