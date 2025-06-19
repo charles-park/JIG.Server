@@ -14,7 +14,7 @@ root@server:~# uname -a
 Linux server 5.15.153-odroid-arm64 #101 SMP PREEMPT Fri Mar 7 11:28:21 KST 2025 aarch64 aarch64 aarch64 GNU/Linux
 ```
 
-### ODROID-C5 (2025-06-19) Update : DDR Clock Error Fix (1968Mhz -> 1896Mhz)
+### ODROID-C5 (2025-06-19) Update : Bootloader DDR Clock Error Fix (1968Mhz -> 1896Mhz)
 * Linux OS Image : ubuntu-22.04-factory-odroidc5-odroidc5-20250619.img.xz
 ```
 root@server:~# uname -a
@@ -41,7 +41,7 @@ root@server:~# git config --global user.email "charles.park@hardkernel.com"
 root@server:~# git config --global user.name "charles-park"
 ```
 
-### Clone the reopsitory with submodule (branch change jig-c5 -> main)
+### Clone the reopsitory with submodule (update 2025.06.19: branch merge jig-c5 -> main)
 ```
 root@server:~# git clone -b jig-c5 --recursive https://github.com/charles-park/JIG.Server (old)
 root@server:~# git clone --recursive https://github.com/charles-park/JIG.Server (update 2025.06.19)
@@ -75,7 +75,7 @@ root@server:~# vi /boot/boot.ini
 
 ...
 
-root@server:~# vi /medoa/boot/config.ini
+root@server:~# vi /boot/config.ini
 default_console=ttyS0,921600
 overlay_resize=16384
 overlay_profile=""
