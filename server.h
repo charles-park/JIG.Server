@@ -178,9 +178,6 @@ typedef struct server__t {
 //------------------------------------------------------------------------------
 // setup.c
 //------------------------------------------------------------------------------
-// 1 -> C4 JIG, 0 -> C5 JIG
-extern int JigModel;
-
 extern void ts_reinit       (server_t *p);
 extern int  server_setup    (server_t *p, const char *cfg_fname);
 
