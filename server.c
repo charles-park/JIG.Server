@@ -478,6 +478,27 @@ static void parse_opts (int argc, char *argv[])
 }
 
 //------------------------------------------------------------------------------
+int JigModel = 0;
+
+static int get_jig_model (void)
+{
+    FILE *fp;
+    char cmd [STR_PATH_LENGTH];
+
+    if ((fp = fopen ("/sys/class/graphics/fb0/virtual_size", "rt")) != NULL) {
+        if (fgets (cmd, STR_PATH_LENGTH, fp)) {
+            fclose (fp);
+
+            if (strstr (cmd, "1920") == NULL)   system ("reboot");
+            // C4 JIG return 1, C5 JIG return 0
+            return  (strstr (cmd, "2160") != NULL) ? 1 : 0;
+        }
+        fclose (fp);
+    }
+    return 0;
+}
+
+//------------------------------------------------------------------------------
 int main (int argc, char *argv[])
 {
     int nch;
@@ -487,6 +508,9 @@ int main (int argc, char *argv[])
 
     // option check
     parse_opts(argc, argv);
+
+    // Jig model (c4 or c5)
+    JigModel = get_jig_model();
 
     // UI, UART (sw value 1 = server.c4.cfg, sw value 0 = OPT_CFG_FNAME)
     server_setup (&server, OPT_SW_VALUE ? "server.c4.cfg" : OPT_CFG_FNAME);
