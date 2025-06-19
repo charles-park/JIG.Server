@@ -9,7 +9,18 @@
 * Linux OS Image : factory-odroidc5-0307.img (odroidh server)
 * jig-c5.base.0307.img (auto login, all ubuntu package installed, lirc installed, python3 module installed, git default setting)
 * jig-c5.server-c5.img (2025.03.13 first release)
-  
+```
+root@server:~# uname -a
+Linux server 5.15.153-odroid-arm64 #101 SMP PREEMPT Fri Mar 7 11:28:21 KST 2025 aarch64 aarch64 aarch64 GNU/Linux
+```
+
+### ODROID-C5 (2025-06-19) Update : DDR Clock Error Fix (1968Mhz -> 1896Mhz)
+* Linux OS Image : ubuntu-22.04-factory-odroidc5-odroidc5-20250619.img.xz
+```
+root@server:~# uname -a
+Linux server 5.15.153-odroid-arm64 #1 SMP PREEMPT Wed, 18 Jun 2025 08:31:13 +0000 aarch64 aarch64 aarch64 GNU/Linux
+```
+
 ### Install package
 ```
 // ubuntu package install
@@ -21,8 +32,6 @@ root@server:~# apt install python3-aiohttp python3-async-timeout
 // system reboot
 root@server:~# reboot
 
-root@server:~# uname -a
-Linux server 5.15.153-odroid-arm64 #101 SMP PREEMPT Fri Mar 7 11:28:21 KST 2025 aarch64 aarch64 aarch64 GNU/Linux
 
 ```
 
@@ -32,13 +41,15 @@ root@server:~# git config --global user.email "charles.park@hardkernel.com"
 root@server:~# git config --global user.name "charles-park"
 ```
 
-### Clone the reopsitory with submodule
+### Clone the reopsitory with submodule (branch change jig-c5 -> main)
 ```
-root@server:~# git clone -b jig-c5 --recursive https://github.com/charles-park/JIG.Server
+root@server:~# git clone -b jig-c5 --recursive https://github.com/charles-park/JIG.Server (old)
+root@server:~# git clone --recursive https://github.com/charles-park/JIG.Server (update 2025.06.19)
 
 or
 
-root@server:~# git clone -b jig-c5 https://github.com/charles-park/JIG.Server
+root@server:~# git clone -b jig-c5 https://github.com/charles-park/JIG.Server (old)
+root@server:~# git clone -b https://github.com/charles-park/JIG.Server (update 2025.06.19)
 root@server:~# cd JIG.Server
 root@server:~/JIG.Server# git submodule update --init --recursive
 ```
@@ -60,15 +71,31 @@ Type=idle
 ```
 root@server:~# vi /boot/boot.ini
 ...
-# setenv condev "console=ttyS0,115200n8"   # on both
+# setenv condev "console=ttyS0,115200n8"   # on both (old)
+
 ...
 
 root@server:~# vi /medoa/boot/config.ini
-...
+default_console=ttyS0,921600
+overlay_resize=16384
+overlay_profile=""
+
+# overlays="spi0 i2c0 i2c1"
+
+# Activate in Server Mode
 overlays="i2c0 i2c1"
+
+# Activate in Server Mode
+# overlays="ir"
+
+gfx-heap-size=180
+
+# Framebuffer resolution must be 1920x1080(Jig C4 Vu7 LCD) or 1920x7201920x720(Jig-C5 Vu12 LCD) on ServerMode. 
+outputmode="1080p60hz"
+
 ; overlays=""
 ...
-...
+
 ```
 
 ### Sound setup (TDM-C-T9015-audio-hifi-alsaPORT-i2s)
