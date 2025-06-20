@@ -343,7 +343,9 @@ void ts_reinit (server_t *p)
     int event_no;
     char ts_event[STR_PATH_LENGTH];
 
-    if (p->pts) ts_deinit (p->pts);
+    if (p->pts) {
+        ts_deinit (p->pts); p->pts = NULL;
+    }
 
     // Vu12 (222a:0001)
     if      ((p->pfb->w == 1920) && (p->pfb->h == 720))
