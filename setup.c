@@ -340,12 +340,23 @@ static int server_config (server_t *p, const char *cfg_fname)
 void ts_reinit (server_t *p)
 {
     // find ts event...
-    int event_no = find_ts_event(p->ts_vid);
+    int event_no;
     char ts_event[STR_PATH_LENGTH];
 
     if (p->pts) ts_deinit (p->pts);
 
+    // Vu12 (222a:0001)
+    if      ((p->pfb->w == 1920) && (p->pfb->h == 720))
+        event_no = find_ts_event ("222a");
+    // Vu7  (16b4:000?)
+    else if ((p->pfb->w == 1920) && (p->pfb->h == 1080))
+        event_no = find_ts_event ("16b4");
+    // ??? display
+    else
+        event_no = find_ts_event (p->ts_vid);
+
     if (event_no != -1) {
+
         memset  (ts_event, 0, sizeof(ts_event));
         sprintf (ts_event, "/dev/input/event%d", event_no);
         p->pts = ts_init (ts_event);
