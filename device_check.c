@@ -35,14 +35,19 @@
 #include "server.h"
 
 //------------------------------------------------------------------------------
-static int iperf3_client_func (const char *server_ip)
+static int iperf3_client_func (const char *server_ip, int did)
 {
     FILE *fp;
     char cmd_line [STR_PATH_LENGTH], *pstr = NULL;
     int speed;
 
     memset  (cmd_line, 0, sizeof(cmd_line));
-    sprintf (cmd_line, "iperf3 -c %s -t 1", server_ip);
+
+    /* iperf-c */
+    if (did == 7)
+        sprintf (cmd_line, "iperf3 -c %s -t 1 -R", server_ip);  /* target client mode */
+    else
+        sprintf (cmd_line, "iperf3 -c %s -t 1", server_ip);     /* target server mode */
 
     if ((fp = popen(cmd_line, "r")) != NULL) {
         memset (cmd_line, 0, sizeof(cmd_line));
@@ -119,13 +124,15 @@ int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
 {
     /* Device request I2C ADC Check */
     switch (pdata->gid) {
-        /* IR Thread running */
+        /* IR, MISC SPI B/T, MISC HP Detect Thread running */
         case eGID_IR:
+        case eGID_MISC:
             return 0;
          case eGID_ETHERNET:
-            if (pdata->did == 2) {  // iperf did
+            // iperf did : iperf server, iperf_s, iperf_c
+            if ((pdata->did == 2) || (pdata->did == 6) || (pdata->did == 7)) {
                 int iperf_speed = 0;
-                iperf_speed = iperf3_client_func (pdata->resp_s);
+                iperf_speed = iperf3_client_func (pdata->resp_s, pdata->did);
                 printf ("%s : iperf = %d\n", __func__, iperf_speed);
                 memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
                 sprintf(pdata->resp_s, "%d", iperf_speed);
@@ -133,16 +140,18 @@ int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
             break;
         case eGID_LED:
             {
-                int value = 0, pin, i = 0;
+                int value = 0, real_value, pin, i = 0;
 
                 for (i = 0; i < 400; i++) {
                     usleep (5 * 1000);
                     adc_board_read (fd, pdata->resp_s, &value, &pin);
 
+                    real_value = value;
                     if(!DEVICE_ACTION(pdata->did) && (value < 400)) { value = 50;     break; }
                     if( DEVICE_ACTION(pdata->did) && (value > 400)) { value = 1000;   break; }
                 }
-                printf ("%s : count = %d, led value = %d\n", __func__, i, value);
+                printf ("%s : count = %d, led value = %d (real = %d)\n",
+                        __func__, i, value, real_value);
                 memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
                 sprintf(pdata->resp_s, "%d", value);
             }
@@ -199,14 +208,28 @@ int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
             break;
         case eGID_AUDIO:
             {
-                int value = 0, pin;
+                int value1 = 0, value2 = 0, pin;
+                char p1[DEVICE_RESP_SIZE], p2[DEVICE_RESP_SIZE], *ptr;
 
-                usleep (100 * 1000);
-                adc_board_read (fd, pdata->resp_s, &value, &pin);
+                memset (p1, 0x00, sizeof(p1));
+                memset (p2, 0x00, sizeof(p2));
 
-                printf ("%s : audio value = %d\n", __func__, value);
+                if ((ptr = strtok (pdata->resp_s, ",")) != NULL) {
+                    strncpy (p1, ptr, strlen(ptr));
+                    usleep (100 * 1000);
+                    adc_board_read (fd, p1, &value1, &pin);
+                }
+
+                if ((ptr = strtok (NULL, ",")) != NULL) {
+                    strncpy (p2, ptr, strlen(ptr));
+                    usleep (100 * 1000);
+                    adc_board_read (fd, p2, &value2, &pin);
+                }
+
+                printf ("%s : audio value1(p1:%s) = %d, value2(p2:%s) = %d\n",
+                        __func__, p1, value1, p2, value2);
                 memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
-                sprintf(pdata->resp_s, "%d", value);
+                sprintf(pdata->resp_s, "%d", value1-value2);
             }
             break;
 /* not implement */
