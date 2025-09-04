@@ -261,8 +261,13 @@ static void parse_M_cmd (server_t *p, char *cfg)
             gpio_export    (gpio);
             gpio_direction (gpio, GPIO_DIR_IN);
 
-            if ((level == in_value) && (gpio_get_value (gpio, &in_value)))
-                p->test_mem_model = mem_size;
+            if (gpio_get_value (gpio, &in_value)) {
+                if (level == in_value) {
+                    p->test_mem_model = mem_size;
+                    printf ("%s : gpio = %d, value = %d, test memory model = %d GB\n"
+                        ,__func__, gpio, in_value, p->test_mem_model);
+                }
+            }
         }
     }
 }
