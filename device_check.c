@@ -128,7 +128,16 @@ int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
         case eGID_IR:
         case eGID_MISC:
             return 0;
-         case eGID_ETHERNET:
+        case eGID_SYSTEM:
+            // mem did
+            if (pdata->did == 0) {
+                printf ("%s : mem_test_size = %d, mem_size = %d\n",
+                        __func__, p->test_mem_model, atoi(pdata->resp_i));
+                memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
+                sprintf(pdata->resp_s, "%d", p->test_mem_model);
+            }
+            break;
+        case eGID_ETHERNET:
             // iperf did : iperf server, iperf_s, iperf_c
             if ((pdata->did == 2) || (pdata->did == 6) || (pdata->did == 7)) {
                 int iperf_speed = 0;

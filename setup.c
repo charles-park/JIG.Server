@@ -242,6 +242,32 @@ static void parse_T_cmd (server_t *p, char *cfg)
 }
 
 //------------------------------------------------------------------------------
+static void parse_M_cmd (server_t *p, char *cfg)
+{
+    char *tok;
+    int level = 0, mem_size = 0, gpio = 0, in_value;
+
+    if (strtok (cfg, ",") != NULL) {
+        if ((tok = strtok (NULL, ",")) != NULL)
+            mem_size = atoi (tok);
+
+        if ((tok = strtok (NULL, ",")) != NULL)
+            gpio = atoi (tok);
+
+        if ((tok = strtok (NULL, ",")) != NULL)
+            level = atoi (tok);
+
+        if (mem_size && gpio) {
+            gpio_export    (gpio);
+            gpio_direction (gpio, GPIO_DIR_IN);
+
+            if ((level == in_value) && (gpio_get_value (gpio, &in_value)))
+                p->test_mem_model = mem_size;
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
 static void parse_D_cmd (server_t *p, char *cfg)
 {
     char *tok;
@@ -327,6 +353,7 @@ static int server_config (server_t *p, const char *cfg_fname)
             case 'T':   parse_T_cmd (p, buf);  break;
             case 'D':   parse_D_cmd (p, buf);  break;
             case 'H':   parse_H_cmd (p, buf);  break;
+            case 'M':   parse_M_cmd (p, buf);  break;
             default :
                 break;
         }

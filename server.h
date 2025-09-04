@@ -80,6 +80,7 @@ enum {
     eUID_MAC_L,     // print mac(touch)
     eUID_MAC_R,
     eUID_USBLP,     // usblp status display & usblp reconfig(touch)
+    eUID_MEM,       // memory size of the target board to be tested.
     eUID_END,
 };
 
@@ -168,6 +169,9 @@ typedef struct server__t {
     // usblp connect status
     int         usblp_status;
     int         usblp_mode;
+
+    // test memory model (default 4GB)
+    int         test_mem_model;
 
     char        ts_vid [STR_NAME_LENGTH];
     int         ts_reset_gpio;

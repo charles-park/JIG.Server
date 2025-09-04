@@ -221,6 +221,15 @@ static void *thread_ui_func (void *arg)
 
         ui_set_sitem (p->pfb, p->pui, p->u_item[eUID_IPADDR], -1, -1, p->ip_addr);
 
+        if (p->u_item[eUID_MEM] > 0)
+        {
+            char mem_size[STR_NAME_LENGTH];
+            memset (mem_size, 0, sizeof(mem_size));
+
+            sprintf (mem_size, "%d GB", p->test_mem_model ? p->test_mem_model : 4);
+            ui_set_sitem (p->pfb, p->pui, p->u_item[eUID_MEM], COLOR_GOLD, -1, mem_size);
+        }
+
         if (onoff)  ui_update (p->pfb, p->pui, -1);
 
         channel_ui_update (p);
@@ -440,11 +449,12 @@ static void parse_opts (int argc, char *argv[])
         static const struct option lopts[] = {
             { "config"   ,  1, 0, 'c' },
             { "gpio num" ,  1, 0, 'g' },
+            { "help"     ,  0, 0, 'h' },
             { NULL, 0, 0, 0 },
         };
         int c;
 
-        c = getopt_long(argc, argv, "c:g:", lopts, NULL);
+        c = getopt_long(argc, argv, "c:g:h", lopts, NULL);
 
         if (c == -1)
             break;
