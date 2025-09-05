@@ -229,17 +229,20 @@ int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
                     adc_board_read (fd, p1, &value1, &pin);
                 }
 
+                #if 0
                 if ((ptr = strtok (NULL, ",")) != NULL) {
                     strncpy (p2, ptr, strlen(ptr));
                     usleep (100 * 1000);
                     adc_board_read (fd, p2, &value2, &pin);
                 }
+                #endif
 
                 printf ("%s : audio value1(p1:%s) = %d, value2(p2:%s) = %d\n",
                         __func__, p1, value1, p2, value2);
                 memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
-                sprintf(pdata->resp_s, "%d", value1-value2);
-            }
+//                sprintf(pdata->resp_s, "%d", value1-value2);
+                sprintf(pdata->resp_s, "%d", value1);
+}
             break;
 /* not implement */
         case eGID_PWM: case eGID_GPIO:
