@@ -125,14 +125,13 @@ int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
     /* Device request I2C ADC Check */
     switch (pdata->gid) {
         /* IR, MISC SPI B/T, MISC HP Detect Thread running */
-        case eGID_IR:
-        case eGID_MISC:
+        case eGID_IR: case eGID_MISC:
             return 0;
         case eGID_SYSTEM:
             // mem did
             if (pdata->did == 0) {
                 printf ("%s : mem_test_size = %d, mem_size = %d\n",
-                        __func__, p->test_mem_model, atoi(pdata->resp_i));
+                        __func__, p->test_mem_model, pdata->resp_i);
                 memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
                 sprintf(pdata->resp_s, "%d", p->test_mem_model);
             }
@@ -147,22 +146,51 @@ int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
                 sprintf(pdata->resp_s, "%d", iperf_speed);
             }
             break;
-        case eGID_LED:
+        case eGID_LED: case eGID_AUDIO:
             {
-                int value = 0, real_value, pin, i = 0;
+                int value, prev_value, check_value, pin, i;
+                char *ptr, adc_port[DEVICE_RESP_SIZE -2];
 
-                for (i = 0; i < 400; i++) {
-                    usleep (5 * 1000);
-                    adc_board_read (fd, pdata->resp_s, &value, &pin);
-
-                    real_value = value;
-                    if(!DEVICE_ACTION(pdata->did) && (value < 400)) { value = 50;     break; }
-                    if( DEVICE_ACTION(pdata->did) && (value > 400)) { value = 1000;   break; }
+                if ((ptr = strtok (pdata->resp_s, "-")) != NULL) {
+                    memset  (adc_port, 0, sizeof(adc_port));
+                    strncpy (adc_port, ptr, strlen(ptr));
+                    if ((ptr = strtok (NULL, "-")) != NULL)
+                        check_value = atoi(ptr);
+                    else
+                        check_value = DEVICE_ACTION(pdata->did) ? 300 : 50; /* default value */
                 }
-                printf ("%s : count = %d, led value = %d (real = %d)\n",
-                        __func__, i, value, real_value);
+                printf ("%s : adc port = %s, check_value = %d\n",
+                            __func__, adc_port, check_value);
+
+                adc_board_read (fd, adc_port, &prev_value, &pin);
+                for (i = 0; i < 1000; i++) {
+                    usleep (1000);
+                    adc_board_read (fd, adc_port, &value, &pin);
+
+                    if (pdata->gid == eGID_LED) {
+                        if(!DEVICE_ACTION(pdata->did)) {
+                            if (value < prev_value)     prev_value = value;
+                            if (value < check_value)    break;
+                        }
+                        if( DEVICE_ACTION(pdata->did)) {
+                            if (value > prev_value)     prev_value = value;
+                            if (value > check_value)    break;
+                        }
+                    } else {
+                        if(!DEVICE_ACTION(pdata->did)) {
+                            if (value > prev_value)     prev_value = value;
+                            if (value > check_value)    break;
+                        }
+                        if( DEVICE_ACTION(pdata->did)) {
+                            if (value < prev_value)     prev_value = value;
+                            if (value < check_value)    break;
+                        }
+                    }
+                }
+                printf ("%s : count = %d, led value = %d (check_value = %d)\n",
+                        __func__, i, prev_value, check_value);
                 memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
-                sprintf(pdata->resp_s, "%d", value);
+                sprintf(pdata->resp_s, "%d", prev_value);
             }
             break;
         case eGID_HEADER:
@@ -215,36 +243,7 @@ int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
                 printf ("%s : %s\n", __func__, pdata->resp_s);
             }
             break;
-        case eGID_AUDIO:
-            {
-                int value1 = 0, value2 = 0, pin;
-                char p1[DEVICE_RESP_SIZE], p2[DEVICE_RESP_SIZE], *ptr;
-
-                memset (p1, 0x00, sizeof(p1));
-                memset (p2, 0x00, sizeof(p2));
-
-                if ((ptr = strtok (pdata->resp_s, ",")) != NULL) {
-                    strncpy (p1, ptr, strlen(ptr));
-                    usleep (100 * 1000);
-                    adc_board_read (fd, p1, &value1, &pin);
-                }
-
-                #if 0
-                if ((ptr = strtok (NULL, ",")) != NULL) {
-                    strncpy (p2, ptr, strlen(ptr));
-                    usleep (100 * 1000);
-                    adc_board_read (fd, p2, &value2, &pin);
-                }
-                #endif
-
-                printf ("%s : audio value1(p1:%s) = %d, value2(p2:%s) = %d\n",
-                        __func__, p1, value1, p2, value2);
-                memset (pdata->resp_s, 0, sizeof(pdata->resp_s));
-//                sprintf(pdata->resp_s, "%d", value1-value2);
-                sprintf(pdata->resp_s, "%d", value1);
-}
-            break;
-/* not implement */
+        /* not implement */
         case eGID_PWM: case eGID_GPIO:
         default:
             pdata->status_i = 0;

@@ -206,7 +206,7 @@ static void channel_ui_update (server_t *p)
 //------------------------------------------------------------------------------
 static void *thread_ui_func (void *arg)
 {
-    static int onoff = 0;
+    static int onoff = 0, system_reset_count = 3;
     server_t *p = (server_t *)arg;
 
     memset (p->ip_addr, 0, sizeof(p->ip_addr));
@@ -230,7 +230,10 @@ static void *thread_ui_func (void *arg)
             ui_set_sitem (p->pfb, p->pui, p->u_item[eUID_MEM], COLOR_GOLD, -1, mem_size);
         }
 
-        if (onoff)  ui_update (p->pfb, p->pui, -1);
+        if (onoff)  {
+            p->usblp_status = usblp_connection();
+            ui_update (p->pfb, p->pui, -1);
+        }
 
         channel_ui_update (p);
         {
@@ -242,7 +245,16 @@ static void *thread_ui_func (void *arg)
                                 onoff ? COLOR_PINK : p->pui->bc.uint, -1);
 
                     ts_reinit (p);
+
+                    // system restart??
+                    if (system_reset_count)
+                        printf ("%s : SYSTEM Restart remain count %d\n", __func__, system_reset_count--);
+                    else {
+                        printf ("%s : SYSTEM Restart...!!\n", __func__);
+                        exit(0);
+                    }
                 }
+                else system_reset_count = 3;
             }
             ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_USBLP],
                 p->usblp_status ? COLOR_GREEN : COLOR_DIM_GRAY, -1);
