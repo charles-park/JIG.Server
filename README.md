@@ -1,57 +1,81 @@
 # JIG.Server
+#### ⚠️ **Note : `All settings must be performed as root.`**
+## List of configurable boards (Detailed settings)
+| MODEL     | DATE    | SERVER BOARD                                  | SERVER-LCD      |
+|:---------:|:-------:|:---------------------------------------------:|:---------------:|
+| JIG_C4_C5 | 2025.01 | [ODROID-C5 (2025.06)](docs/server.c4_c5.md)   | VU12 (1920x720) |
+| JIG_M1    | 2025.07 | [ODROID-C5 (2025.09)](docs/server.m1.md)      | VU12 (1920x720) |
 
-2024 New version JIG-Server (JIG Server Base : odroid-c4)
-2025 New version JIG-Server (branch jig-c5)
+## Reference Documents
+* [Protocol](https://docs.google.com/spreadsheets/d/1F-HGwMx3569bgrLBSw_cTt5DpECXvL3MvAWMEkRWaL4/edit?gid=0#gid=0)
+* [GPIO Map](https://docs.google.com/spreadsheets/d/18cRWfgj9xmlr1JQb91fNN7SQxrBZxkHoxOEJN6Yy4SI/edit?gid=0#gid=0)
+* [MAC Address info](https://docs.google.com/spreadsheets/d/1vIC5tHQ0rEVEjXHcP8fZPeVYMpLD3hWRf8UIYwtjrpw/edit?gid=0#gid=0)
 
-* Document : https://docs.google.com/spreadsheets/d/1igBObU7CnP6FRaRt-x46l5R77-8uAKEskkhthnFwtpY/edit?gid=719914769#gid=719914769
-
-### ODROID-C5 (2025-01-06)
-* Linux OS Image : factory-odroidc5-0307.img (odroidh server)
-* jig-c5.base.0307.img (auto login, all ubuntu package installed, lirc installed, python3 module installed, git default setting)
-* jig-c5.server-c5.img (2025.03.13 first release)
+## Required packages
+  * System upgrade
 ```
-root@server:~# uname -a
-Linux server 5.15.153-odroid-arm64 #101 SMP PREEMPT Fri Mar 7 11:28:21 KST 2025 aarch64 aarch64 aarch64 GNU/Linux
+apt update && apt upgrade -y
+apt update --fix-missing
 ```
-
-### ODROID-C5 (2025-06-19) Update : Bootloader DDR Clock Error Fix (1968Mhz -> 1896Mhz)
-* Linux OS Image : ubuntu-22.04-factory-odroidc5-odroidc5-20250619.img.xz
+  * Common packages
 ```
-root@server:~# uname -a
-Linux server 5.15.153-odroid-arm64 #1 SMP PREEMPT Wed, 18 Jun 2025 08:31:13 +0000 aarch64 aarch64 aarch64 GNU/Linux
+apt install build-essential vim ssh git python3 python3-pip ethtool net-tools usbutils i2c-tools overlayroot nmap evtest htop cups cups-bsd iperf3 alsa samba lirc evtest minicom
 ```
-
-### Install package
+  
+  * Ubuntu version (>= 24.xx) : python3 package install
 ```
-// ubuntu package install
-root@server:~# apt install build-essential vim ssh git python3 python3-pip ethtool net-tools usbutils i2c-tools overlayroot nmap evtest htop cups cups-bsd iperf3 alsa samba lirc evtest
-
-// ubuntu 24.01 version python3 package install
-root@server:~# apt install python3-aiohttp python3-async-timeout
-
-// system reboot
-root@server:~# reboot
-
-
+apt install python3-aiohttp python3-async-timeout
 ```
 
-### Github setting
+  * Ubuntu version ( < 24.xx) : python3 package install
 ```
-root@server:~# git config --global user.email "charles.park@hardkernel.com"
-root@server:~# git config --global user.name "charles-park"
+pip install aiohttp asyncio
 ```
 
-### Clone the reopsitory with submodule (update 2025.06.19: branch merge jig-c5 -> main)
+## Clone the reopsitory with submodule
 ```
-root@server:~# git clone -b jig-c5 --recursive https://github.com/charles-park/JIG.Server (old)
-root@server:~# git clone --recursive https://github.com/charles-park/JIG.Server (update 2025.06.19)
+root@odroid:~# git clone --recursive https://github.com/charles-park/JIG.m2.self
 
 or
 
-root@server:~# git clone -b jig-c5 https://github.com/charles-park/JIG.Server (old)
-root@server:~# git clone -b https://github.com/charles-park/JIG.Server (update 2025.06.19)
-root@server:~# cd JIG.Server
-root@server:~/JIG.Server# git submodule update --init --recursive
+root@odroid:~# git clone https://github.com/charles-park/JIG.Client
+root@odroid:~# cd JIG.Client
+root@odroid:~/JIG.Client# git submodule update --init --recursive
+
+// app build
+root@odroid:~/JIG.Client# make clean && make
+
+// app install
+root@odroid:~/JIG.Client# cd service
+root@odroid:~/JIG.Client/service# ./install.sh
+
+```
+
+### SSH root login
+```
+root@server:~# passwd root
+New password: 
+Retype new password: 
+passwd: password updated successfully
+
+
+root@server:~# vi /etc/ssh/sshd_config
+...
+#LoginGraceTime 2m
+
+PermitRootLogin yes
+StrictModes yes
+
+#MaxAuthTries 6
+#MaxSessions 10
+
+PubkeyAuthentication yes
+
+# Expect .ssh/authorized_keys2 to be disregarded by default in future.
+#AuthorizedKeysFile     .ssh/authorized_keys .ssh/authorized_keys2
+...
+
+root@server:~# service sshd restart
 ```
 
 ### Auto login
@@ -67,70 +91,6 @@ Type=idle
 * edit tool save
   save exit [Ctrl+ k, Ctrl + q]
 
-### Disable Console (serial ttyS0), hdmi 1920x1080, gpio overlay disable
-```
-root@server:~# vi /boot/boot.ini
-...
-# setenv condev "console=ttyS0,115200n8"   # on both (old)
-
-...
-
-root@server:~# vi /boot/config.ini
-default_console=ttyS0,921600
-overlay_resize=16384
-overlay_profile=""
-
-# overlays="spi0 i2c0 i2c1"
-
-# Activate in Server Mode
-overlays="i2c0 i2c1"
-
-# Activate in Server Mode
-# overlays="ir"
-
-gfx-heap-size=180
-
-# Framebuffer resolution must be 1920x1080(Jig C4 Vu7 LCD) or 1920x7201920x720(Jig-C5 Vu12 LCD) on ServerMode. 
-outputmode="1080p60hz"
-
-; overlays=""
-...
-
-```
-
-### Sound setup (TDM-C-T9015-audio-hifi-alsaPORT-i2s)
-```
-// Codec info
-root@server:~# aplay -l
-**** List of PLAYBACK Hardware Devices ****
-card 0: AMLAUGESOUND [AML-AUGESOUND], device 0: TDM-B-dummy-alsaPORT-i2s2hdmi soc:dummy-0 []
-  Subdevices: 1/1
-  Subdevice #0: subdevice #0
-card 0: AMLAUGESOUND [AML-AUGESOUND], device 1: SPDIF-B-dummy-alsaPORT-spdifb soc:dummy-1 []
-  Subdevices: 1/1
-  Subdevice #0: subdevice #0
-card 0: AMLAUGESOUND [AML-AUGESOUND], device 2: TDM-C-T9015-audio-hifi-alsaPORT-i2s fe01a000.t9015-2 []
-  Subdevices: 1/1
-  Subdevice #0: subdevice #0
-card 0: AMLAUGESOUND [AML-AUGESOUND], device 3: SPDIF-dummy-alsaPORT-spdif soc:dummy-3 []
-  Subdevices: 1/1
-  Subdevice #0: subdevice #0
-
-// config mixer (mute off)
-root@server:~# amixer sset 'TDMOUT_C Mute' off
-```
-
-* Sound test (Sign-wave 1Khz)
-```
-// use speaker-test
-root@server:~# speaker-test -D hw:0,2 -c 2 -t sine -f 1000           # pin header target, all
-root@server:~# speaker-test -D hw:0,2 -c 2 -t sine -f 1000 -p 1 -s 1 # pin header target, left
-root@server:~# speaker-test -D hw:0,2 -c 2 -t sine -f 1000 -p 1 -s 2 # pin header target, right
-
-// or use aplay with (1Khz audio file)
-root@server:~# aplay -Dhw:0,2 {audio file} -d {play time}
-```
-
 ### Disable screen off
 ```
 root@server:~# vi ~/.bashrc
@@ -140,7 +100,7 @@ echo 0 > /sys/class/graphics/fb0/blank
 ...
 ```
 
-### server static ip settings (For Debugging)
+### Static ip settings (For Debugging)
 ```
 root@server:~# vi /etc/netplan/01-netcfg.yaml
 ```
@@ -164,7 +124,7 @@ root@server:~# netplan apply
 root@server:~# ifconfig
 ```
 
-### server samba config
+### Samba config
 ```
 root@server:~# smbpasswd -a root
 root@server:~# vi /etc/samba/smb.conf
@@ -201,6 +161,11 @@ Entry Point:  00000000
 root@server:~# vi /etc/overlayroot.conf
 ...
 overlayroot_cfgdisk="disabled"
+
+# root partition only overlay fs
+# overlayroot="tmpfs:recurse=0"
+
+# All partition overlay fs
 overlayroot="tmpfs"
 ```
 * overlayroot disable
@@ -216,5 +181,3 @@ root@server:~# vi /etc/overlayroot.conf
 overlayroot_cfgdisk="disabled"
 overlayroot=""
 ```
-
-
