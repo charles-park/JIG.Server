@@ -1,7 +1,7 @@
 # Server : JIG-M1 (2025-07)
 
 * Document : [ODROID-M1 - ADC Board 연결도(2025)](https://docs.google.com/spreadsheets/d/1mUUWAhZeI7kd9SqFgP_7Fea8CZK7xyCqQDq9VtFoWFI/edit?gid=0#gid=0)
-* Config   : [DEV Config](/configs/m1_dev.cfg), [UI Config](/configs/m1_ui.cfg)
+* Config   : [DEV Config](configs/m1_dev.cfg), [UI Config](configs/m1_ui.cfg)
 * Image PATH     : smb://odroidh3.local/sharedfolder/생산관리/jig/odroid-m1/2025.09.16-M1_JIG/
 * Release Image  : m1_jig_server.Sep_10_2025.c5_emmc.img.xz
 * Linux OS Image : ubuntu-22.04-factory-odroidc5-odroidc5-20250619.img.xz
