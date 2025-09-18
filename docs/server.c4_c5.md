@@ -1,4 +1,4 @@
-# Server : JIG-C4_C5 (2025-01-06)
+# Server : JIG-C4_C5 (2025-01)
 
 * Document : [ODROID-C5 - ADC Board 연결도(2025)](https://docs.google.com/spreadsheets/d/1DmyNXs4d5W-9Q2ZlV6k4eF86kqg6jsr3/edit?gid=346818897#gid=346818897)
 * Config   : [DEV Config](/configs/c4_c5_server.c5.cfg), [UI Config](/configs/c4_c5_ui.c5.cfg)
