@@ -1,4 +1,4 @@
-# Server : JIG-M1 (2025-07)
+# Server : JIG-M1 (2025.07)
 
 * Document : [ODROID-M1 - ADC Board 연결도(2025)](https://docs.google.com/spreadsheets/d/1mUUWAhZeI7kd9SqFgP_7Fea8CZK7xyCqQDq9VtFoWFI/edit?gid=0#gid=0)
 * Config   : [DEV Config](/configs/m1_server.c5.cfg), [UI Config](/configs/m1_ui.c5.cfg)
