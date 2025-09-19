@@ -1,9 +1,5 @@
 #!/bin/bash
-
-# device stable delay
-# sleep 10 && sync
-
 #--------------------------
-# ODROID-C4 Server enable
+# JIG Server running
 #--------------------------
-/usr/bin/sync && /root/JIG.Server/JIG.Server -c m1_server.c5.cfg > /dev/null 2>&1
+/usr/bin/sync && /root/JIG.Server/JIG.Server > /dev/null 2>&1
