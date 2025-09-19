@@ -72,9 +72,9 @@ else
 	@echo ""
 	@echo "COPY JIG_CONF=$(JIG_CONF) to $(SRC_DIRS)/server.cfg"
 	@echo ""
-	install -m 644 $(CONF_DIRS)/$(JIG_CONF) $(SRC_DIRS)/server.cfg
+	install -m 644 $(CONF_DIRS)/$(JIG_CONF) $(SRC_DIRS)/server.cfg && sync
 	@echo ""
-	install -m 755 $(SERVICE_DIRS)/$(SERVICE_NAME) $(SYSTEMD_DIRS)/$(SERVICE_NAME) && sync;
+	install -m 755 $(SERVICE_DIRS)/$(SERVICE_NAME) $(SYSTEMD_DIRS)/$(SERVICE_NAME) && sync
 	@echo ""
 
 	@if systemctl is-active --quiet $(SERVICE_NAME); then \
@@ -95,11 +95,11 @@ endif
 endif
 
 uninstall :
-	@echo "Uninstalling $(TARGET) and $(SERVICE_NAME)"
 	@if systemctl is-active --quiet $(SERVICE_NAME); then \
 		echo "disable $(SERVICE_NAME)..."; \
-		systemctl stop $(SERVICE_NAME); \
-		systemctl disable $(SERVICE_NAME); \
+		systemctl stop $(SERVICE_NAME) && sync; \
+		systemctl disable $(SERVICE_NAME) && sync; \
+		$(RM) $(SYSTEMD_DIRS)/$(SERVICE_NAME) && sync; \
 	fi
 #	$(MAKE) clean
 
