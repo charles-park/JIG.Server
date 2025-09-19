@@ -45,9 +45,11 @@ root@odroid:~/JIG.Server# git submodule update --init --recursive
 // app build
 root@odroid:~/JIG.Server# make clean && make
 
-// app install
-root@odroid:~/JIG.Server# cd service
-root@odroid:~/JIG.Server/service# ./install.sh
+// odroid-jig.service install
+root@odroid:~/JIG.Server# make install JIG_CONF={server cfg file}
+
+// odroid-jig.service remove
+root@odroid:~/JIG.Server# make uninstall
 
 ```
 
