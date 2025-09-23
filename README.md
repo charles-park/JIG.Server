@@ -3,8 +3,8 @@
 ## List of configurable boards (Detailed settings)
 | MODEL     | DATE    | SERVER BOARD                         | SERVER-LCD      |   | CLIENT BOARD                              | CLIENT-LCD    | 
 |:---------:|:-------:|:------------------------------------:|:---------------:|:-:|:-----------------------------------------:|:-------------:|
-| JIG-C4_C5 | 2025.01 | [ODROID-C5](docs/server.c4_c5.md)    | VU12 (1920x720) |   | ODROID-C4 (2025.06), ODROID-C5 (2025.06)  | VU5 (800x480) |
 | JIG-M1    | 2025.07 | [ODROID-C5](docs/server.m1.md)       | VU12 (1920x720) |   | ODROID-M1 (2025.09)]                      | VU5 (800x480) |
+| JIG-C4_C5 | 2025.01 | [ODROID-C5](docs/server.c4_c5.md)    | VU12 (1920x720) |   | ODROID-C4 (2025.06), ODROID-C5 (2025.06)  | VU5 (800x480) |
 
 ## Reference Documents
 * [Protocol](https://docs.google.com/spreadsheets/d/1F-HGwMx3569bgrLBSw_cTt5DpECXvL3MvAWMEkRWaL4/edit?gid=0#gid=0)
