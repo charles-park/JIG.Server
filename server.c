@@ -239,22 +239,23 @@ static void *thread_ui_func (void *arg)
         {
             if (p->ts_reset_gpio != -1) {
                 int bt_status = 0;
-                if (gpio_get_value(p->ts_reset_gpio, &bt_status))
-                if (bt_status == p->ts_reset_level)  {
-                    ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_ALIVE],
-                                onoff ? COLOR_PINK : p->pui->bc.uint, -1);
+                if (gpio_get_value(p->ts_reset_gpio, &bt_status)) {
+                    if (bt_status == p->ts_reset_level)  {
+                        ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_ALIVE],
+                                    onoff ? COLOR_PINK : p->pui->bc.uint, -1);
 
-                    ts_reinit (p);
+                        ts_reinit (p);
 
-                    // system restart??
-                    if (system_reset_count)
-                        printf ("%s : SYSTEM Restart remain count %d\n", __func__, system_reset_count--);
-                    else {
-                        printf ("%s : SYSTEM Restart...!!\n", __func__);
-                        exit(0);
+                        // system restart??
+                        if (system_reset_count)
+                            printf ("%s : SYSTEM Restart remain count %d\n", __func__, system_reset_count--);
+                        else {
+                            printf ("%s : SYSTEM Restart...!!\n", __func__);
+                            exit(0);
+                        }
                     }
+                    else system_reset_count = 3;
                 }
-                else system_reset_count = 3;
             }
             ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_USBLP],
                 p->usblp_status ? COLOR_GREEN : COLOR_DIM_GRAY, -1);
