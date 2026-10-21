@@ -140,6 +140,16 @@ typedef struct channel__t {
 }   channel_t;
 
 //------------------------------------------------------------------------------
+// 2026.10.20 확장포트 ADC검사를 위하여 설정(ADC가 분리되어짐)
+// Extend gpio port
+#define EXP_PORT_MAX    20
+
+typedef struct extend_port_grp__t {
+    int     count;
+    char    adc_port[EXP_PORT_MAX][STR_NAME_LENGTH];
+}   extend_port_grp_t;
+
+//------------------------------------------------------------------------------
 typedef struct server__t {
     // HDMI UI
     char        fb_path[STR_PATH_LENGTH];
@@ -176,6 +186,10 @@ typedef struct server__t {
     char        ts_vid [STR_NAME_LENGTH];
     int         ts_reset_gpio;
     int         ts_reset_level;
+
+    #define EXP_GROUP_MAX   2
+    extend_port_grp_t   exp[EXP_GROUP_MAX];
+
 }   server_t;
 
 //------------------------------------------------------------------------------

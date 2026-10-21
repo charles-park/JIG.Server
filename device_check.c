@@ -213,7 +213,14 @@ int device_resp_check (server_t *p, int fd, parse_resp_data_t *pdata)
 
                 memset (header, 0, sizeof(header));
                 //int adc_board_read (int fd, const char *h_name, int *read_value, int *cnt)
-                adc_board_read (fd, pdata->resp_s, &header[0], &pin);
+                if (!strncmp(pdata->resp_s, "EXP", strlen("EXP"))) {
+
+                    int exp_num = pdata->resp_s[3] - '0';
+
+                    for (i = 0; i < p->exp[0].count; i++)
+                        adc_board_read (fd, p->exp[exp_num].adc_port[i], &header[i], &pin);
+
+                } else  adc_board_read (fd, pdata->resp_s, &header[0], &pin);
 
                 // Header pin config
                 for (i = 0; i < p->h_item_cnt; i++) {

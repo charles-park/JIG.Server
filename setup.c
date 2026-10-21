@@ -298,6 +298,31 @@ static void parse_D_cmd (server_t *p, char *cfg)
 }
 
 //------------------------------------------------------------------------------
+static void parse_E_cmd (server_t *p, char *cfg)
+{
+    char *tok;
+    int grp_num = 0, grp_cnt = 0, i;
+
+    if (strtok (cfg, ",") != NULL) {
+        if ((tok = strtok (NULL, ",")) != NULL)
+            grp_num = atoi (tok);
+
+        if ((tok = strtok (NULL, ",")) != NULL)
+            grp_cnt = atoi (tok);
+
+        memset (&p->exp[grp_num], 0x00, sizeof(p->exp[0]));
+        p->exp[grp_num].count = grp_cnt;
+        for (i = 0; i < grp_cnt+1; i++) {
+            if ((tok = strtok (NULL, ",")) != NULL) {
+                strncpy (p->exp[grp_num].adc_port[i], tok, strlen(tok));
+//                printf ("%s : exp group = %d, pin = %d, name = %s\r\n",
+//                    __func__, grp_num, i, p->exp[grp_num].adc_port[i]);
+            }
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
 static int channel_setup (channel_t *pch)
 {
     char uart_path[STR_PATH_LENGTH];
@@ -359,6 +384,7 @@ static int server_config (server_t *p, const char *cfg_fname)
             case 'D':   parse_D_cmd (p, buf);  break;
             case 'H':   parse_H_cmd (p, buf);  break;
             case 'M':   parse_M_cmd (p, buf);  break;
+            case 'E':   parse_E_cmd (p, buf);  break;
             default :
                 break;
         }
