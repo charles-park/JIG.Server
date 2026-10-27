@@ -130,7 +130,7 @@ static void channel_ui_update (server_t *p)
         uid = nch ? p->u_item[eUID_STATUS_R] : p->u_item[eUID_STATUS_L];
 
         /* system i2c, uart error check */
-        if ((pch->i2c_fd == -1) || (pch->puart == NULL)) {
+        if ((pch->i2c_fd == -1) || (pch->puart == NULL) || (p->net_state == 0)) {
             char err_item[STR_NAME_LENGTH];
             int cnt = 0;
 
@@ -140,6 +140,8 @@ static void channel_ui_update (server_t *p)
                 cnt += sprintf (&err_item[cnt], "%s", "I2C ");
             if (pch->puart == NULL)
                 cnt += sprintf (&err_item[cnt], "%s", "UART(S) ");
+            if (p->net_state == 0)
+                cnt += sprintf (&err_item[cnt], "%s", "Network ");
 
             ui_set_ritem (p->pfb, p->pui, uid, onoff ? COLOR_RED : p->pui->bc.uint, -1);
             ui_set_sitem (p->pfb, p->pui, uid, -1, -1, err_item);
@@ -210,7 +212,7 @@ static void *thread_ui_func (void *arg)
     server_t *p = (server_t *)arg;
 
     memset (p->ip_addr, 0, sizeof(p->ip_addr));
-    get_board_ip(p->ip_addr);
+    p->net_state = get_board_ip(p->ip_addr);
 
     while (1) {
         onoff = !onoff;
@@ -219,7 +221,12 @@ static void *thread_ui_func (void *arg)
         ui_set_sitem (p->pfb, p->pui, p->u_item[eUID_ALIVE],
                     -1, -1, onoff ? p->pui->b_item[0].s_dfl : __DATE__);
 
-        ui_set_sitem (p->pfb, p->pui, p->u_item[eUID_IPADDR], -1, -1, p->ip_addr);
+        if (p->net_state) {
+            ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_IPADDR], p->pui->bc.uint, -1);
+            ui_set_sitem (p->pfb, p->pui, p->u_item[eUID_IPADDR], -1, -1, p->ip_addr);
+        }
+        else
+            ui_set_ritem (p->pfb, p->pui, p->u_item[eUID_IPADDR], COLOR_RED, -1);
 
         if (p->u_item[eUID_MEM] > 0)
         {
@@ -417,9 +424,10 @@ static void ts_event_check (server_t *p, int ui_id)
     }
 
     // request server ip
-    if (ui_id == 2) {
+//    if (ui_id == 2) {
+    if (ui_id == p->u_item[eUID_IPADDR]) {
         memset (p->ip_addr, 0, sizeof(p->ip_addr));
-        get_board_ip(p->ip_addr);
+        p->net_state = get_board_ip(p->ip_addr);
     }
 
     if ((nch = find_ditem_uid (p, ui_id, &pos)) == -1) return;

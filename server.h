@@ -159,6 +159,7 @@ typedef struct server__t {
     ui_grp_t    *pui;
     ts_t        *pts;
 
+    int         net_state;
     char        ip_addr[20];
 
     // channel left/right
